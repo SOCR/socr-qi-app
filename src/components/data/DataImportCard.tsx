@@ -109,7 +109,7 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
               <Label htmlFor="format-select">Data Format</Label>
               <Select 
                 value={importOptions.format} 
-                onValueChange={(value) => handleOptionChange("format", value)}
+                onValueChange={(value) => handleOptionChange("format", value as 'wide' | 'long')}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select data format" />

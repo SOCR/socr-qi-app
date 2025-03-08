@@ -1,3 +1,4 @@
+
 // Define our core data types
 export interface DataPoint {
   timestamp: string;
@@ -61,8 +62,8 @@ export interface SimulationOptions {
 
 export interface ImportOptions {
   format: 'wide' | 'long';
-  timestampColumn: string;
-  valueColumn: string;
+  timestampColumn?: string;
+  valueColumn?: string;
   seriesIdColumn?: string;
   categoryColumn?: string;
   subjectIdColumn?: string;

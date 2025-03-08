@@ -1,216 +1,214 @@
 
 import React from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { AnalysisResult } from "@/lib/types";
-import { BarChart3, LineChart, Layers, AlertTriangle, Activity, TrendingUp } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { AlertCircle, CheckCircle, TrendingUp, TrendingDown, Zap, FileBarChart } from "lucide-react";
 
 interface AnalysisResultsProps {
   result: AnalysisResult;
 }
 
 const AnalysisResults = ({ result }: AnalysisResultsProps) => {
-  const getIcon = () => {
-    switch (result.type) {
-      case "descriptive":
-        return <BarChart3 className="h-5 w-5 mr-2" />;
-      case "regression":
-      case "forecasting":
-      case "logistic-regression":
-      case "poisson-regression":
-        return <TrendingUp className="h-5 w-5 mr-2" />;
-      case "classification":
-        return <Layers className="h-5 w-5 mr-2" />;
-      case "anomaly":
-        return <AlertTriangle className="h-5 w-5 mr-2" />;
-      default:
-        return <Activity className="h-5 w-5 mr-2" />;
+  const { type, metrics, results, createdAt } = result;
+  
+  // Format analysis type for display
+  const getDisplayType = (type: string) => {
+    switch (type) {
+      case 'descriptive': return 'Descriptive Statistics';
+      case 'regression': return 'Linear Regression';
+      case 'logistic-regression': return 'Logistic Regression';
+      case 'poisson-regression': return 'Poisson Regression';
+      case 'classification': return 'Classification';
+      case 'forecasting': return 'Forecasting';
+      case 'anomaly': return 'Anomaly Detection';
+      default: return type.charAt(0).toUpperCase() + type.slice(1);
     }
   };
   
-  const getTitle = () => {
-    switch (result.type) {
-      case "descriptive": return "Descriptive Statistics";
-      case "regression": return "Linear Regression";
-      case "logistic-regression": return "Logistic Regression";
-      case "poisson-regression": return "Poisson Regression";
-      case "classification": return "Classification";
-      case "forecasting": return "Forecasting";
-      case "anomaly": return "Anomaly Detection";
-      default: return result.type.charAt(0).toUpperCase() + result.type.slice(1);
+  // Determine card accent color based on analysis type
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case 'descriptive': return 'bg-blue-50 border-blue-200';
+      case 'regression': 
+      case 'logistic-regression':
+      case 'poisson-regression':
+        return 'bg-purple-50 border-purple-200';
+      case 'classification': return 'bg-green-50 border-green-200';
+      case 'forecasting': return 'bg-amber-50 border-amber-200';
+      case 'anomaly': return 'bg-red-50 border-red-200';
+      default: return 'bg-gray-50 border-gray-200';
     }
   };
   
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+  // Get icon based on analysis type
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'descriptive': return <FileBarChart className="h-5 w-5 text-blue-500" />;
+      case 'regression': 
+      case 'logistic-regression':
+      case 'poisson-regression':
+        return <TrendingUp className="h-5 w-5 text-purple-500" />;
+      case 'classification': return <CheckCircle className="h-5 w-5 text-green-500" />;
+      case 'forecasting': return <TrendingDown className="h-5 w-5 text-amber-500" />;
+      case 'anomaly': return <AlertCircle className="h-5 w-5 text-red-500" />;
+      default: return <Zap className="h-5 w-5 text-gray-500" />;
+    }
   };
   
   return (
-    <Card className="w-full">
+    <Card className={`border-2 ${getTypeColor(type)}`}>
       <CardHeader>
-        <div className="flex justify-between items-start">
-          <div>
-            <CardTitle className="flex items-center">
-              {getIcon()}
-              {getTitle()} Results
-            </CardTitle>
-            <CardDescription>
-              Analysis performed at {formatDate(result.createdAt)}
-            </CardDescription>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            {getTypeIcon(type)}
+            <CardTitle>{getDisplayType(type)}</CardTitle>
           </div>
-          <Badge variant="secondary">{result.type}</Badge>
+          <Badge variant="outline">
+            {new Date(createdAt).toLocaleString()}
+          </Badge>
         </div>
+        <CardDescription>
+          Analysis ID: {result.id.substring(0, 8)}
+        </CardDescription>
       </CardHeader>
-      <CardContent>
-        <Tabs defaultValue="summary" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="summary">Summary</TabsTrigger>
-            <TabsTrigger value="metrics">Metrics</TabsTrigger>
-            <TabsTrigger value="details">Details</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="summary" className="space-y-4">
-            <div className="p-4 bg-muted rounded-md">
-              <p className="text-sm">{result.results.summary}</p>
-            </div>
-          </TabsContent>
-          
-          <TabsContent value="metrics" className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {result.metrics && Object.entries(result.metrics).map(([key, value]) => (
-                <div key={key} className="p-4 bg-card border rounded-md">
-                  <div className="text-sm font-medium text-muted-foreground mb-1">
-                    {key.toUpperCase()}
-                  </div>
-                  <div className="text-2xl font-bold">
-                    {typeof value === 'number' ? value.toFixed(4) : value}
+      
+      <CardContent className="space-y-4">
+        {type === 'descriptive' && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {['count', 'mean', 'median', 'min', 'max', 'stdDev'].map(stat => (
+              <div key={stat} className="bg-white p-2 rounded border">
+                <div className="text-xs text-gray-500 capitalize">
+                  {stat === 'stdDev' ? 'Std. Deviation' : stat}
+                </div>
+                <div className="text-lg font-medium">
+                  {results[stat]?.toFixed?.(2) ?? 'N/A'}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        {(type === 'regression' || type === 'logistic-regression' || type === 'poisson-regression') && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {type === 'regression' && [
+                { key: 'slope', label: 'Slope' },
+                { key: 'intercept', label: 'Intercept' },
+                { key: 'rSquared', label: 'R²' },
+                { key: 'mse', label: 'MSE' },
+                { key: 'rmse', label: 'RMSE' },
+                { key: 'mae', label: 'MAE' }
+              ].map(({ key, label }) => (
+                <div key={key} className="bg-white p-2 rounded border">
+                  <div className="text-xs text-gray-500">{label}</div>
+                  <div className="text-lg font-medium">
+                    {(metrics?.[key] ?? results[key])?.toFixed?.(4) ?? 'N/A'}
                   </div>
                 </div>
               ))}
               
-              {/* Descriptive statistics metrics */}
-              {result.type === 'descriptive' && (
-                <>
-                  <div className="p-4 bg-card border rounded-md">
-                    <div className="text-sm font-medium text-muted-foreground mb-1">
-                      COUNT
-                    </div>
-                    <div className="text-2xl font-bold">
-                      {result.results.count}
-                    </div>
+              {type === 'logistic-regression' && [
+                { key: 'accuracy', label: 'Accuracy' },
+                { key: 'auc', label: 'AUC' },
+                { key: 'precision', label: 'Precision' },
+                { key: 'recall', label: 'Recall' },
+                { key: 'f1Score', label: 'F1 Score' },
+                { key: 'deviance', label: 'Deviance' }
+              ].map(({ key, label }) => (
+                <div key={key} className="bg-white p-2 rounded border">
+                  <div className="text-xs text-gray-500">{label}</div>
+                  <div className="text-lg font-medium">
+                    {(metrics?.[key] ?? results[key])?.toFixed?.(4) ?? 'N/A'}
                   </div>
-                  
-                  <div className="p-4 bg-card border rounded-md">
-                    <div className="text-sm font-medium text-muted-foreground mb-1">
-                      MEAN
-                    </div>
-                    <div className="text-2xl font-bold">
-                      {result.results.mean.toFixed(4)}
-                    </div>
-                  </div>
-                  
-                  <div className="p-4 bg-card border rounded-md">
-                    <div className="text-sm font-medium text-muted-foreground mb-1">
-                      STANDARD DEVIATION
-                    </div>
-                    <div className="text-2xl font-bold">
-                      {result.results.stdDev.toFixed(4)}
-                    </div>
-                  </div>
-                  
-                  <div className="p-4 bg-card border rounded-md">
-                    <div className="text-sm font-medium text-muted-foreground mb-1">
-                      MIN / MAX
-                    </div>
-                    <div className="text-2xl font-bold">
-                      {result.results.min.toFixed(2)} / {result.results.max.toFixed(2)}
-                    </div>
-                  </div>
-                </>
-              )}
+                </div>
+              ))}
               
-              {/* Regression metrics */}
-              {(result.type === 'regression' || result.type === 'logistic-regression' || result.type === 'poisson-regression') && (
-                <>
-                  <div className="p-4 bg-card border rounded-md">
-                    <div className="text-sm font-medium text-muted-foreground mb-1">
-                      SLOPE
-                    </div>
-                    <div className="text-2xl font-bold">
-                      {result.results.slope.toFixed(4)}
-                    </div>
+              {type === 'poisson-regression' && [
+                { key: 'deviance', label: 'Deviance' },
+                { key: 'pseudoRSquared', label: 'Pseudo R²' },
+                { key: 'dispersion', label: 'Dispersion' },
+                { key: 'aic', label: 'AIC' },
+                { key: 'bic', label: 'BIC' },
+                { key: 'mae', label: 'MAE' }
+              ].map(({ key, label }) => (
+                <div key={key} className="bg-white p-2 rounded border">
+                  <div className="text-xs text-gray-500">{label}</div>
+                  <div className="text-lg font-medium">
+                    {(metrics?.[key] ?? results[key])?.toFixed?.(4) ?? 'N/A'}
                   </div>
-                  
-                  {result.results.rSquared !== undefined && (
-                    <div className="p-4 bg-card border rounded-md">
-                      <div className="text-sm font-medium text-muted-foreground mb-1">
-                        R-SQUARED
-                      </div>
-                      <div className="text-2xl font-bold">
-                        {result.results.rSquared.toFixed(4)}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {result.metrics?.auc !== undefined && (
-                    <div className="p-4 bg-card border rounded-md">
-                      <div className="text-sm font-medium text-muted-foreground mb-1">
-                        AUC
-                      </div>
-                      <div className="text-2xl font-bold">
-                        {result.metrics.auc.toFixed(4)}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {result.metrics?.pseudoRSquared !== undefined && (
-                    <div className="p-4 bg-card border rounded-md">
-                      <div className="text-sm font-medium text-muted-foreground mb-1">
-                        PSEUDO R-SQUARED
-                      </div>
-                      <div className="text-2xl font-bold">
-                        {result.metrics.pseudoRSquared.toFixed(4)}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-              
-              {/* Anomaly detection metrics */}
-              {result.type === 'anomaly' && (
-                <>
-                  <div className="p-4 bg-card border rounded-md">
-                    <div className="text-sm font-medium text-muted-foreground mb-1">
-                      ANOMALIES DETECTED
-                    </div>
-                    <div className="text-2xl font-bold">
-                      {result.results.anomalyCount}
-                    </div>
-                  </div>
-                  
-                  <div className="p-4 bg-card border rounded-md">
-                    <div className="text-sm font-medium text-muted-foreground mb-1">
-                      ANOMALY PERCENTAGE
-                    </div>
-                    <div className="text-2xl font-bold">
-                      {result.results.anomalyPercentage.toFixed(2)}%
-                    </div>
-                  </div>
-                </>
-              )}
+                </div>
+              ))}
             </div>
-          </TabsContent>
-          
-          <TabsContent value="details" className="space-y-4">
-            <div className="rounded-md border overflow-hidden">
-              <pre className="bg-muted p-4 overflow-auto text-xs">
-                {JSON.stringify(result.results, null, 2)}
-              </pre>
+            
+            {results.equation && (
+              <div className="bg-white p-3 rounded border">
+                <div className="text-xs text-gray-500 mb-1">Equation</div>
+                <div className="font-mono text-sm overflow-x-auto whitespace-nowrap">
+                  {results.equation}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {type === 'anomaly' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {['threshold', 'anomalyCount', 'anomalyPercent', 'mean', 'stdDev'].map(key => (
+                <div key={key} className="bg-white p-2 rounded border">
+                  <div className="text-xs text-gray-500 capitalize">
+                    {key === 'anomalyCount' ? 'Anomalies Count' :
+                     key === 'anomalyPercent' ? 'Anomalies %' :
+                     key === 'stdDev' ? 'Std. Deviation' : key}
+                  </div>
+                  <div className="text-lg font-medium">
+                    {key === 'anomalyPercent' 
+                      ? `${(results[key] * 100).toFixed(2)}%` 
+                      : results[key]?.toFixed?.(2) ?? 'N/A'}
+                  </div>
+                </div>
+              ))}
             </div>
-          </TabsContent>
-        </Tabs>
+            
+            {results.anomalies && results.anomalies.length > 0 && (
+              <div>
+                <div className="text-sm font-medium mb-2">
+                  {results.anomalies.length} anomalies detected
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {type === 'forecasting' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {['mse', 'rmse', 'mae', 'forecastPeriod'].map(key => (
+                <div key={key} className="bg-white p-2 rounded border">
+                  <div className="text-xs text-gray-500 capitalize">
+                    {key === 'forecastPeriod' ? 'Forecast Period' : key.toUpperCase()}
+                  </div>
+                  <div className="text-lg font-medium">
+                    {key === 'forecastPeriod' 
+                      ? `${results[key]} points` 
+                      : (metrics?.[key] ?? results[key])?.toFixed?.(4) ?? 'N/A'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </CardContent>
+      
+      <CardFooter className="text-sm text-muted-foreground pt-0">
+        {type === 'descriptive' && 'Basic statistical metrics of the time series data.'}
+        {type === 'regression' && 'Linear relationship between time and values.'}
+        {type === 'logistic-regression' && 'Logistic regression model for binary outcomes.'}
+        {type === 'poisson-regression' && 'Poisson model for count/rate data over time.'}
+        {type === 'anomaly' && 'Points that deviate significantly from normal patterns.'}
+        {type === 'forecasting' && 'Prediction of future values based on past trends.'}
+      </CardFooter>
     </Card>
   );
 };

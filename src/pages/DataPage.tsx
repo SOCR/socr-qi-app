@@ -64,7 +64,7 @@ const DataPage = () => {
                 <div className="space-y-4">
                   <h2 className="text-xl font-bold">Data Visualization</h2>
                   
-                  {/* Always render a single chart with all time series */}
+                  {/* Always render a single chart with all time series overlay */}
                   <TimeSeriesChart 
                     data={data} 
                     height={450}

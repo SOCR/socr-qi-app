@@ -1,13 +1,14 @@
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import { TimeSeriesData, AnalysisResult } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
-  ResponsiveContainer, ReferenceLine, ZoomOutMap
+  ResponsiveContainer, ReferenceLine, Brush
 } from "recharts";
 import { formatDate } from "@/lib/dataUtils";
 import { Maximize, Minimize, ZoomIn } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface TimeSeriesChartProps {
   data: TimeSeriesData | TimeSeriesData[];
@@ -71,7 +72,9 @@ const TimeSeriesChart = ({
         
         // Add the value for this series at this timestamp
         const existingPoint = timeMap.get(timestamp)!;
-        existingPoint[seriesName] = point.value;
+        // Use seriesId if available (for wide format), otherwise use the series name
+        const seriesKey = point.seriesId || seriesName;
+        existingPoint[seriesKey] = point.value;
         
         // If we have analysis results for this series, add predictions/anomalies
         if (analysisResult && analysisResult.timeSeriesId === series.id) {
@@ -82,7 +85,7 @@ const TimeSeriesChart = ({
               // Add predicted values if available in analysis results
               const prediction = analysisResult.results.predictions?.[seriesIndex];
               if (prediction !== undefined) {
-                existingPoint[`${seriesName}_predicted`] = prediction;
+                existingPoint[`${seriesKey}_predicted`] = prediction;
               }
               break;
               
@@ -92,8 +95,8 @@ const TimeSeriesChart = ({
                 (a: any) => new Date(a.timestamp).getTime() === timestamp
               );
               if (anomalyInfo?.isAnomaly) {
-                existingPoint[`${seriesName}_anomaly`] = point.value;
-                existingPoint[`${seriesName}_zScore`] = anomalyInfo.zScore;
+                existingPoint[`${seriesKey}_anomaly`] = point.value;
+                existingPoint[`${seriesKey}_zScore`] = anomalyInfo.zScore;
               }
               break;
           }
@@ -106,17 +109,46 @@ const TimeSeriesChart = ({
     return formattedData.sort((a, b) => a.timestamp - b.timestamp);
   }, [data, analysisResult]);
   
-  // Get all unique series names
-  const seriesNames = useMemo(() => {
-    const allSeries = Array.isArray(data) ? data : [data];
-    return allSeries.map(series => series.name || `Series ${allSeries.indexOf(series) + 1}`);
+  // Get all unique series names/keys by examining the data points
+  const seriesKeys = useMemo(() => {
+    const keys = new Set<string>();
+    
+    // Collect all series keys from data points
+    if (Array.isArray(data)) {
+      data.forEach(series => {
+        series.dataPoints.forEach(point => {
+          if (point.seriesId) {
+            keys.add(point.seriesId);
+          } else {
+            keys.add(series.name || `Series ${data.indexOf(series) + 1}`);
+          }
+        });
+      });
+    } else if (data) {
+      data.dataPoints.forEach(point => {
+        if (point.seriesId) {
+          keys.add(point.seriesId);
+        } else {
+          keys.add(data.name || 'Series 1');
+        }
+      });
+    }
+    
+    return Array.from(keys);
   }, [data]);
   
   // Handle zoom reset
-  const handleResetZoom = () => {
+  const handleResetZoom = useCallback(() => {
     setZoomDomain(null);
     setIsZoomed(false);
-  };
+  }, []);
+  
+  // Handle brush change (time window selection)
+  const handleBrushChange = useCallback((domain: any) => {
+    if (domain && domain.startIndex !== undefined && domain.endIndex !== undefined) {
+      setIsZoomed(true);
+    }
+  }, []);
   
   // Display multiple series and create a name for the chart
   const chartTitle = useMemo(() => {
@@ -138,10 +170,10 @@ const TimeSeriesChart = ({
       0
     );
     
-    return `${totalPoints} data points across ${allSeries.length} series${
+    return `${totalPoints} data points across ${seriesKeys.length} series${
       allSeries[0]?.metadata?.unit ? ` (${allSeries[0].metadata.unit})` : ''
     }`;
-  }, [description, data]);
+  }, [description, data, seriesKeys]);
   
   return (
     <Card className="w-full">
@@ -151,13 +183,17 @@ const TimeSeriesChart = ({
             <CardTitle>{chartTitle}</CardTitle>
             <CardDescription>{chartDescription}</CardDescription>
           </div>
-          <button 
-            onClick={handleResetZoom} 
-            className={`p-1 rounded hover:bg-gray-100 ${!isZoomed ? 'text-gray-400 cursor-default' : 'text-gray-700'}`}
-            disabled={!isZoomed}
-          >
-            {isZoomed ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
-          </button>
+          {isZoomed && (
+            <Button 
+              variant="outline"
+              size="sm"
+              onClick={handleResetZoom}
+              className="flex items-center gap-1"
+            >
+              <Maximize className="h-4 w-4" />
+              <span>Reset Zoom</span>
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -168,8 +204,7 @@ const TimeSeriesChart = ({
             onMouseUp={(e) => {
               if (e && e.xAxisMap && e.yAxisMap) {
                 // Only set zoom if actually zoomed in
-                if (e.xAxisMap[0].domain.toString() !== e.xAxisMap[0].niceTicks.toString() ||
-                    e.yAxisMap[0].domain.toString() !== e.yAxisMap[0].niceTicks.toString()) {
+                if (e.xAxisMap[0].domain && e.yAxisMap[0].domain) {
                   setIsZoomed(true);
                 }
               }
@@ -192,19 +227,33 @@ const TimeSeriesChart = ({
             <Tooltip 
               labelFormatter={(label) => `Time: ${label}`}
               formatter={(value, name) => {
-                const series = seriesNames.find(series => name === series || name.startsWith(`${series}_`));
-                return [value, series || name];
+                // Check if name is a string before applying string methods
+                const seriesName = typeof name === 'string' ? 
+                  (name.includes('_predicted') ? 
+                    name.split('_predicted')[0] + ' (Predicted)' : 
+                    name
+                  ) : 
+                  name;
+                return [value, seriesName];
               }}
             />
             <Legend />
             
+            {/* Time windowing with brush */}
+            <Brush 
+              dataKey="formattedTime" 
+              height={30} 
+              stroke="#8884d8"
+              onChange={handleBrushChange}
+            />
+            
             {/* Render a line for each series */}
-            {seriesNames.map((seriesName, index) => (
+            {seriesKeys.map((seriesKey, index) => (
               <Line 
-                key={seriesName}
+                key={seriesKey}
                 type="monotone" 
-                dataKey={seriesName} 
-                name={seriesName}
+                dataKey={seriesKey} 
+                name={seriesKey}
                 stroke={COLORS[index % COLORS.length]} 
                 strokeWidth={2}
                 dot={{ r: 3, fill: COLORS[index % COLORS.length], stroke: 'none' }}
@@ -215,12 +264,12 @@ const TimeSeriesChart = ({
             ))}
             
             {/* Render prediction lines if available */}
-            {analysisResult?.type.includes('regression') && seriesNames.map((seriesName, index) => (
+            {analysisResult?.type.includes('regression') && seriesKeys.map((seriesKey, index) => (
               <Line 
-                key={`${seriesName}_predicted`}
+                key={`${seriesKey}_predicted`}
                 type="monotone" 
-                dataKey={`${seriesName}_predicted`}
-                name={`${seriesName} (Predicted)`}
+                dataKey={`${seriesKey}_predicted`}
+                name={`${seriesKey} (Predicted)`}
                 stroke={COLORS[index % COLORS.length]}
                 strokeWidth={2}
                 strokeDasharray="5 5"
