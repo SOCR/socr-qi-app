@@ -1,9 +1,9 @@
+
 import { DataPoint, TimeSeriesData, SimulationOptions, ImportOptions } from "./types";
 
 // Parse CSV data into our TimeSeriesData format
 export const parseCSVData = (csvContent: string, options: ImportOptions): TimeSeriesData => {
   const lines = csvContent.split('\n').filter(line => line.trim());
-  const headers = lines[0].split(',').map(h => h.trim());
   
   if (options.format === 'wide') {
     return parseWideFormatCSV(csvContent);
@@ -15,7 +15,7 @@ export const parseCSVData = (csvContent: string, options: ImportOptions): TimeSe
 // Detects the most likely timestamp column from headers or first row values
 const detectTimestampColumn = (headers: string[], firstRowValues: string[]): number => {
   // Common timestamp column names
-  const timeColumnNames = ['time', 'date', 'timestamp', 'datetime', 'period'];
+  const timeColumnNames = ['time', 'date', 'timestamp', 'datetime', 'period', 'observation_date', 'observationdate'];
   
   // Check headers for common timestamp column names
   for (let i = 0; i < headers.length; i++) {
@@ -30,6 +30,7 @@ const detectTimestampColumn = (headers: string[], firstRowValues: string[]): num
     /^\d{4}[-/]\d{1,2}[-/]\d{1,2}/, // YYYY-MM-DD
     /^\d{1,2}[-/]\d{1,2}[-/]\d{4}/, // MM-DD-YYYY or DD-MM-YYYY
     /^\d{1,2}[-/]\d{1,2}[-/]\d{2}/, // MM-DD-YY or DD-MM-YY
+    /^\d{1,2}\/\d{1,2}\/\d{4}/, // M/D/YYYY format (like 1/1/1982)
     /^\d{4}[-/]\d{1,2}[-/]\d{1,2}\s\d{1,2}:\d{1,2}/, // YYYY-MM-DD HH:MM
     /^\d{1,2}:\d{1,2}/ // HH:MM
   ];
@@ -48,10 +49,26 @@ const detectTimestampColumn = (headers: string[], firstRowValues: string[]): num
 // Parse wide format CSV with automatic timestamp column detection
 const parseWideFormatCSV = (csvContent: string): TimeSeriesData => {
   const lines = csvContent.split('\n').filter(line => line.trim());
+  
+  // Get headers from first row and clean them
   const headers = lines[0].split(',').map(h => h.trim());
   
-  // Auto-detect timestamp column from first row
+  // If there are tab separators in the first row, split by tabs instead
+  if (lines[0].includes('\t')) {
+    const tabHeaders = lines[0].split('\t').map(h => h.trim());
+    if (tabHeaders.length > headers.length) {
+      return parseWideFormatTSV(csvContent);
+    }
+  }
+  
+  // Get first data row
+  if (lines.length < 2) {
+    throw new Error("CSV file must contain at least a header row and one data row");
+  }
+  
   const firstRowValues = lines[1].split(',').map(v => v.trim());
+  
+  // Auto-detect timestamp column from first row
   const timestampIndex = detectTimestampColumn(headers, firstRowValues);
   
   console.log(`Auto-detected timestamp column: ${headers[timestampIndex]} (index: ${timestampIndex})`);
@@ -63,6 +80,73 @@ const parseWideFormatCSV = (csvContent: string): TimeSeriesData => {
     if (!lines[i].trim()) continue;
     
     const values = lines[i].split(',').map(v => v.trim());
+    
+    // Skip if we don't have enough values
+    if (values.length < headers.length) continue;
+    
+    const timestamp = values[timestampIndex];
+    
+    // Process each column (except the timestamp column) as a separate series
+    for (let j = 0; j < headers.length; j++) {
+      if (j === timestampIndex) continue; // Skip the timestamp column
+      
+      const seriesId = headers[j];
+      const value = parseFloat(values[j]);
+      
+      // Skip if not a valid number
+      if (isNaN(value)) continue;
+      
+      dataPoints.push({
+        timestamp: timestamp,
+        value: value,
+        seriesId: seriesId,
+        category: seriesId, // Use series name as category by default
+      });
+    }
+  }
+  
+  return {
+    id: generateId(),
+    name: `Dataset ${new Date().toISOString().split('T')[0]}`,
+    dataPoints: dataPoints,
+    metadata: {
+      format: 'wide',
+      source: 'import',
+      importedAt: new Date().toISOString()
+    }
+  };
+};
+
+// Parse TSV (tab-separated) wide format data
+const parseWideFormatTSV = (tsvContent: string): TimeSeriesData => {
+  const lines = tsvContent.split('\n').filter(line => line.trim());
+  
+  // Get headers from first row and clean them
+  const headers = lines[0].split('\t').map(h => h.trim());
+  
+  // Get first data row
+  if (lines.length < 2) {
+    throw new Error("TSV file must contain at least a header row and one data row");
+  }
+  
+  const firstRowValues = lines[1].split('\t').map(v => v.trim());
+  
+  // Auto-detect timestamp column from first row
+  const timestampIndex = detectTimestampColumn(headers, firstRowValues);
+  
+  console.log(`Auto-detected timestamp column: ${headers[timestampIndex]} (index: ${timestampIndex})`);
+  
+  const dataPoints: DataPoint[] = [];
+  
+  // Process each line
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    
+    const values = lines[i].split('\t').map(v => v.trim());
+    
+    // Skip if we don't have enough values
+    if (values.length < headers.length) continue;
+    
     const timestamp = values[timestampIndex];
     
     // Process each column (except the timestamp column) as a separate series

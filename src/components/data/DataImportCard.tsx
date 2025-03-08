@@ -51,7 +51,7 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
     try {
       const content = await file.text();
       
-      // Parse CSV file with auto-detection for wide format
+      // Parse CSV file with improved handling for wide format
       const data = parseCSVData(content, importOptions);
       
       onDataImported(data);
@@ -118,13 +118,13 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
                   <SelectValue placeholder="Select data format" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="wide">Wide Format (first column is time, others are variables)</SelectItem>
+                  <SelectItem value="wide">Wide Format (one column for time, others for time series)</SelectItem>
                   <SelectItem value="long">Long Format (time, series ID, value columns)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground mt-1">
                 {importOptions.format === 'wide' 
-                  ? "Timestamp column will be auto-detected. Each other column will be treated as a separate time series."
+                  ? "Time/date column will be auto-detected. Each other column will be treated as a separate time series with the column name as the series ID."
                   : "For long format, please specify column names."}
               </p>
             </div>

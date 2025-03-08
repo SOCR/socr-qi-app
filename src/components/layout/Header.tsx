@@ -19,10 +19,10 @@ const Header = () => {
   const { toast } = useToast();
 
   const handleDocumentation = () => {
-    window.open("https://www.socr.umich.edu/html/SOCR_Documentation.html", "_blank");
+    window.open("https://github.com/SOCR/socr-qi-app", "_blank");
     toast({
       title: "Documentation",
-      description: "Opening SOCR documentation in a new tab"
+      description: "Opening SOCR project documentation in a new tab"
     });
   };
 
@@ -44,8 +44,24 @@ const Header = () => {
   return (
     <header className="bg-white border-b border-gray-200 py-3">
       <div className="container mx-auto px-4 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <Activity className="h-6 w-6 text-primary" />
+        <div className="flex items-center space-x-3">
+          <a 
+            href="https://www.socr.umich.edu/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center"
+          >
+            <img 
+              src="/lovable-uploads/182dfcda-d2cf-44f1-98a0-8baaba5025fc.png" 
+              alt="SOCR Logo" 
+              className="h-8 w-auto mr-2" 
+              onError={(e) => {
+                // Fallback to text if image fails to load
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+            <Activity className="h-6 w-6 text-primary" />
+          </a>
           <h1 className="text-xl font-bold text-gray-800">
             SOCR Quality Improvement App
           </h1>
