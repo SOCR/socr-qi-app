@@ -13,6 +13,18 @@ interface TimeSeriesChartProps {
   height?: number;
 }
 
+// Define chart data type to avoid TypeScript errors
+interface ChartDataPoint {
+  timestamp: number;
+  formattedTime: string;
+  value: number;
+  category?: string;
+  predicted?: number;
+  isAnomaly?: boolean;
+  zScore?: number;
+  isForecast?: boolean;
+}
+
 const TimeSeriesChart = ({ 
   data, 
   analysisResult, 
@@ -22,7 +34,7 @@ const TimeSeriesChart = ({
 }: TimeSeriesChartProps) => {
   
   // Prepare chart data by combining the original data points with any analysis data
-  const chartData = useMemo(() => {
+  const chartData = useMemo<ChartDataPoint[]>(() => {
     const formattedData = data.dataPoints.map(point => ({
       timestamp: new Date(point.timestamp).getTime(),
       formattedTime: formatDate(point.timestamp),

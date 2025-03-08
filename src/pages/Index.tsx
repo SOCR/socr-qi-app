@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import Header from "@/components/layout/Header";
 import PageContainer from "@/components/layout/PageContainer";
@@ -12,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Upload, FileChart, BarChart, LineChart } from "lucide-react";
+import { Upload, FileText, BarChart, LineChart } from "lucide-react";
 import { TimeSeriesData, AnalysisResult } from "@/lib/types";
 
 const Index = () => {
@@ -20,28 +19,20 @@ const Index = () => {
   const [data, setData] = useState<TimeSeriesData | TimeSeriesData[] | null>(null);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
 
-  // Handle data import
   const handleDataImported = (importedData: TimeSeriesData) => {
     setData(importedData);
-    // Clear previous analysis results when new data is imported
     setAnalysisResults([]);
-    // Switch to the data tab to show the imported data
     setActiveTab("data");
   };
 
-  // Handle data simulation
   const handleDataGenerated = (simulatedData: TimeSeriesData[]) => {
     setData(simulatedData);
-    // Clear previous analysis results when new data is generated
     setAnalysisResults([]);
-    // Switch to the data tab to show the generated data
     setActiveTab("data");
   };
 
-  // Handle analysis completion
   const handleAnalysisComplete = (result: AnalysisResult) => {
     setAnalysisResults(prev => [...prev, result]);
-    // Switch to the analysis tab to show the results
     setActiveTab("analysis");
   };
 
@@ -64,7 +55,7 @@ const Index = () => {
               Dashboard
             </TabsTrigger>
             <TabsTrigger value="data" className="flex items-center">
-              <FileChart className="h-4 w-4 mr-2" />
+              <FileText className="h-4 w-4 mr-2" />
               Data
             </TabsTrigger>
             <TabsTrigger value="analysis" className="flex items-center">
@@ -77,7 +68,6 @@ const Index = () => {
             </TabsTrigger>
           </TabsList>
           
-          {/* Dashboard Tab Content */}
           <TabsContent value="dashboard" className="space-y-6 animate-fade-in">
             <div className="grid grid-cols-1 gap-6">
               {!data ? (
@@ -110,10 +100,8 @@ const Index = () => {
                 </Card>
               ) : (
                 <>
-                  {/* Data Summary Card */}
                   <DataSummary data={data} />
                   
-                  {/* Charts */}
                   <div className="space-y-4">
                     <h2 className="text-xl font-bold">Data Visualization</h2>
                     
@@ -132,7 +120,6 @@ const Index = () => {
                     )}
                   </div>
                   
-                  {/* Analysis Results */}
                   {analysisResults.length > 0 && (
                     <div className="space-y-4">
                       <h2 className="text-xl font-bold">Recent Analysis Results</h2>
@@ -148,7 +135,6 @@ const Index = () => {
             </div>
           </TabsContent>
           
-          {/* Data Tab Content */}
           <TabsContent value="data" className="space-y-6 animate-fade-in">
             {!data ? (
               <Alert>
@@ -181,7 +167,6 @@ const Index = () => {
             )}
           </TabsContent>
           
-          {/* Analysis Tab Content */}
           <TabsContent value="analysis" className="space-y-6 animate-fade-in">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-1">
@@ -208,10 +193,8 @@ const Index = () => {
                   </Card>
                 ) : (
                   <div className="space-y-6">
-                    {/* Most recent analysis result first */}
                     <AnalysisResults result={analysisResults[analysisResults.length - 1]} />
                     
-                    {/* Show chart with analysis results */}
                     {Array.isArray(data) ? (
                       <TimeSeriesChart 
                         data={data.find(d => d.id === analysisResults[analysisResults.length - 1].timeSeriesId) || data[0]} 
@@ -228,7 +211,6 @@ const Index = () => {
               </div>
             </div>
             
-            {/* Previous Analysis Results */}
             {analysisResults.length > 1 && (
               <div className="space-y-4 mt-6">
                 <h2 className="text-xl font-bold">Previous Analysis Results</h2>
@@ -241,7 +223,6 @@ const Index = () => {
             )}
           </TabsContent>
           
-          {/* Import Tab Content */}
           <TabsContent value="import" className="space-y-6 animate-fade-in">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <DataImportCard onDataImported={handleDataImported} />
