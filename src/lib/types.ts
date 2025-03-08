@@ -5,6 +5,7 @@ export interface DataPoint {
   value: number;
   category?: string;
   subjectId?: string;
+  seriesId?: string;
   metadata?: Record<string, any>;
 }
 
@@ -17,6 +18,7 @@ export interface TimeSeriesData {
     unit?: string;
     source?: string;
     collectionMethod?: string;
+    format?: 'wide' | 'long';
     [key: string]: any;
   };
 }
@@ -53,4 +55,25 @@ export interface SimulationOptions {
   missingDataPercentage?: number;
   noiseLevel?: number;
   trendType?: 'random' | 'increasing' | 'decreasing' | 'cyclic' | 'seasonal';
+  format?: 'wide' | 'long';
+}
+
+export interface ImportOptions {
+  format: 'wide' | 'long';
+  timestampColumn: string;
+  valueColumn: string;
+  seriesIdColumn?: string;
+  categoryColumn?: string;
+  subjectIdColumn?: string;
+}
+
+export interface Report {
+  id: string;
+  title: string;
+  createdAt: string;
+  description?: string;
+  datasets: TimeSeriesData[];
+  analyses: AnalysisResult[];
+  summary?: string;
+  conclusions?: string;
 }

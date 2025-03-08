@@ -7,6 +7,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FileUp, FilePlus, AlertCircle } from "lucide-react";
 import { parseCSVData } from "@/lib/dataUtils";
 import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { ImportOptions } from "@/lib/types";
 
 interface DataImportCardProps {
   onDataImported: (data: any) => void;
@@ -17,6 +20,14 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const [importOptions, setImportOptions] = useState<ImportOptions>({
+    format: 'wide',
+    timestampColumn: "Timestamp",
+    valueColumn: "Value",
+    seriesIdColumn: "SeriesID",
+    categoryColumn: "Category",
+    subjectIdColumn: "SubjectID"
+  });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -24,6 +35,10 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
       setFile(selectedFile);
       setError(null);
     }
+  };
+
+  const handleOptionChange = (key: keyof ImportOptions, value: string) => {
+    setImportOptions(prev => ({ ...prev, [key]: value }));
   };
 
   const handleImport = async () => {
@@ -38,13 +53,8 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
     try {
       const content = await file.text();
       
-      // Parse CSV file
-      const data = parseCSVData(content, {
-        timestampColumn: "Timestamp",
-        valueColumn: "Value",
-        categoryColumn: "Category",
-        subjectIdColumn: "SubjectID"
-      });
+      // Parse CSV file with format option
+      const data = parseCSVData(content, importOptions);
       
       onDataImported(data);
       toast({
@@ -94,9 +104,77 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
                 {file ? file.name : "Choose a CSV file"}
               </span>
               <span className="text-xs text-gray-500 mt-1">
-                CSV with Timestamp, Value columns required
+                CSV file with time series data
               </span>
             </label>
+          </div>
+
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="format">Data Format</Label>
+              <Select 
+                value={importOptions.format} 
+                onValueChange={(value) => handleOptionChange("format", value)}
+                id="format"
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select data format" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="wide">Wide Format (each variable has its own column)</SelectItem>
+                  <SelectItem value="long">Long Format (time, series ID, value columns)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="timestampColumn">Timestamp Column</Label>
+                <Input 
+                  id="timestampColumn"
+                  value={importOptions.timestampColumn}
+                  onChange={(e) => handleOptionChange("timestampColumn", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="valueColumn">Value Column</Label>
+                <Input 
+                  id="valueColumn"
+                  value={importOptions.valueColumn}
+                  onChange={(e) => handleOptionChange("valueColumn", e.target.value)}
+                />
+              </div>
+            </div>
+
+            {importOptions.format === 'long' && (
+              <div className="space-y-2">
+                <Label htmlFor="seriesIdColumn">Series ID Column</Label>
+                <Input 
+                  id="seriesIdColumn"
+                  value={importOptions.seriesIdColumn}
+                  onChange={(e) => handleOptionChange("seriesIdColumn", e.target.value)}
+                />
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="categoryColumn">Category Column (optional)</Label>
+                <Input 
+                  id="categoryColumn"
+                  value={importOptions.categoryColumn}
+                  onChange={(e) => handleOptionChange("categoryColumn", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="subjectIdColumn">Subject ID Column (optional)</Label>
+                <Input 
+                  id="subjectIdColumn"
+                  value={importOptions.subjectIdColumn}
+                  onChange={(e) => handleOptionChange("subjectIdColumn", e.target.value)}
+                />
+              </div>
+            </div>
           </div>
 
           {error && (
