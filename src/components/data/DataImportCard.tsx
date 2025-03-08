@@ -111,11 +111,10 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
 
           <div className="space-y-4 pt-4">
             <div className="space-y-2">
-              <Label htmlFor="format">Data Format</Label>
+              <Label htmlFor="format-select">Data Format</Label>
               <Select 
                 value={importOptions.format} 
                 onValueChange={(value) => handleOptionChange("format", value)}
-                id="format"
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select data format" />

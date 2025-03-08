@@ -19,27 +19,41 @@ const parseWideFormatCSV = (csvContent: string, options: ImportOptions): TimeSer
   const headers = lines[0].split(',').map(h => h.trim());
   
   const timestampIndex = headers.indexOf(options.timestampColumn);
-  const valueIndex = headers.indexOf(options.valueColumn);
-  const categoryIndex = options.categoryColumn ? headers.indexOf(options.categoryColumn) : -1;
-  const subjectIdIndex = options.subjectIdColumn ? headers.indexOf(options.subjectIdColumn) : -1;
   
-  if (timestampIndex === -1 || valueIndex === -1) {
-    throw new Error('Required columns not found in CSV data');
+  if (timestampIndex === -1) {
+    throw new Error(`Timestamp column "${options.timestampColumn}" not found in CSV data`);
   }
   
+  // For wide format, we assume column 1 is time and all other columns are time-series values
   const dataPoints: DataPoint[] = [];
   
+  // Process each line
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
     
     const values = lines[i].split(',').map(v => v.trim());
+    const timestamp = values[timestampIndex];
     
-    dataPoints.push({
-      timestamp: values[timestampIndex],
-      value: parseFloat(values[valueIndex]),
-      ...(categoryIndex > -1 && { category: values[categoryIndex] }),
-      ...(subjectIdIndex > -1 && { subjectId: values[subjectIdIndex] }),
-    });
+    // Process each column (except the timestamp column) as a separate series
+    for (let j = 0; j < headers.length; j++) {
+      if (j === timestampIndex) continue; // Skip the timestamp column
+      
+      const seriesId = headers[j];
+      const value = parseFloat(values[j]);
+      
+      // Skip if not a valid number
+      if (isNaN(value)) continue;
+      
+      dataPoints.push({
+        timestamp: timestamp,
+        value: value,
+        seriesId: seriesId,
+        ...(options.categoryColumn && { category: seriesId }),
+        ...(options.subjectIdColumn && values.length > headers.indexOf(options.subjectIdColumn) && { 
+          subjectId: values[headers.indexOf(options.subjectIdColumn)] 
+        }),
+      });
+    }
   }
   
   return {
@@ -73,10 +87,14 @@ const parseLongFormatCSV = (csvContent: string, options: ImportOptions): TimeSer
     if (!lines[i].trim()) continue;
     
     const values = lines[i].split(',').map(v => v.trim());
+    const value = parseFloat(values[valueIndex]);
+    
+    // Skip if not a valid number
+    if (isNaN(value)) continue;
     
     dataPoints.push({
       timestamp: values[timestampIndex],
-      value: parseFloat(values[valueIndex]),
+      value: value,
       ...(seriesIdIndex > -1 && { seriesId: values[seriesIdIndex] }),
       ...(categoryIndex > -1 && { category: values[categoryIndex] }),
       ...(subjectIdIndex > -1 && { subjectId: values[subjectIdIndex] }),
