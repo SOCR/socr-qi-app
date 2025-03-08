@@ -21,7 +21,10 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const [importOptions, setImportOptions] = useState<ImportOptions>({
-    format: 'wide'
+    format: 'wide',
+    timestampColumn: "", // Will be auto-detected
+    valueColumn: "Value",
+    seriesIdColumn: "SeriesID"
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -115,14 +118,14 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
                   <SelectValue placeholder="Select data format" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="wide">Wide Format (one column for time, others for values)</SelectItem>
-                  <SelectItem value="long">Long Format (separate columns for timestamp, value, and ID)</SelectItem>
+                  <SelectItem value="wide">Wide Format (one column for time, others for time series)</SelectItem>
+                  <SelectItem value="long">Long Format (time, series ID, value columns)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground mt-1">
                 {importOptions.format === 'wide' 
-                  ? "Time/date column will be auto-detected. Each other column will represent a separate time series."
-                  : "For long format, please specify column names below."}
+                  ? "Time/date column will be auto-detected. Each other column will be treated as a separate time series with the column name as the series ID."
+                  : "For long format, please specify column names."}
               </p>
             </div>
 
@@ -133,7 +136,7 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
                     <Label htmlFor="timestampColumn">Timestamp Column</Label>
                     <Input 
                       id="timestampColumn"
-                      value={importOptions.timestampColumn || ""}
+                      value={importOptions.timestampColumn}
                       onChange={(e) => handleOptionChange("timestampColumn", e.target.value)}
                       placeholder="e.g., Date, Time, Timestamp"
                     />
@@ -142,7 +145,7 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
                     <Label htmlFor="valueColumn">Value Column</Label>
                     <Input 
                       id="valueColumn"
-                      value={importOptions.valueColumn || ""}
+                      value={importOptions.valueColumn}
                       onChange={(e) => handleOptionChange("valueColumn", e.target.value)}
                       placeholder="e.g., Value, Measurement"
                     />
@@ -153,7 +156,7 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
                   <Label htmlFor="seriesIdColumn">Series ID Column</Label>
                   <Input 
                     id="seriesIdColumn"
-                    value={importOptions.seriesIdColumn || ""}
+                    value={importOptions.seriesIdColumn}
                     onChange={(e) => handleOptionChange("seriesIdColumn", e.target.value)}
                     placeholder="e.g., Variable, Metric, SeriesID"
                   />

@@ -25,7 +25,7 @@ const detectTimestampColumn = (headers: string[], firstRowValues: string[]): num
     }
   }
   
-  // Check if any column has date-like formats
+  // Check if first column has date-like formats
   const datePatterns = [
     /^\d{4}[-/]\d{1,2}[-/]\d{1,2}/, // YYYY-MM-DD
     /^\d{1,2}[-/]\d{1,2}[-/]\d{4}/, // MM-DD-YYYY or DD-MM-YYYY
@@ -35,7 +35,7 @@ const detectTimestampColumn = (headers: string[], firstRowValues: string[]): num
     /^\d{1,2}:\d{1,2}/ // HH:MM
   ];
 
-  for (let i = 0; i < Math.min(headers.length, 5); i++) { // Check first 5 columns
+  for (let i = 0; i < Math.min(headers.length, 3); i++) { // Check first 3 columns
     const value = firstRowValues[i];
     if (datePatterns.some(pattern => pattern.test(value))) {
       return i;
@@ -50,59 +50,48 @@ const detectTimestampColumn = (headers: string[], firstRowValues: string[]): num
 const parseWideFormatCSV = (csvContent: string): TimeSeriesData => {
   const lines = csvContent.split('\n').filter(line => line.trim());
   
-  // If there are no lines, throw an error
-  if (lines.length === 0) {
-    throw new Error("CSV file is empty");
-  }
-  
-  // If there are tab separators in the first row, split by tabs instead
-  if (lines[0].includes('\t')) {
-    return parseWideFormatTSV(csvContent);
-  }
-  
   // Get headers from first row and clean them
   const headers = lines[0].split(',').map(h => h.trim());
   
-  // If there's only one row (just headers), throw an error
+  // If there are tab separators in the first row, split by tabs instead
+  if (lines[0].includes('\t')) {
+    const tabHeaders = lines[0].split('\t').map(h => h.trim());
+    if (tabHeaders.length > headers.length) {
+      return parseWideFormatTSV(csvContent);
+    }
+  }
+  
+  // Get first data row
   if (lines.length < 2) {
     throw new Error("CSV file must contain at least a header row and one data row");
   }
   
-  // Get first data row for timestamp detection
   const firstRowValues = lines[1].split(',').map(v => v.trim());
   
-  // Auto-detect timestamp column
+  // Auto-detect timestamp column from first row
   const timestampIndex = detectTimestampColumn(headers, firstRowValues);
   
   console.log(`Auto-detected timestamp column: ${headers[timestampIndex]} (index: ${timestampIndex})`);
   
   const dataPoints: DataPoint[] = [];
   
-  // Process each data row
+  // Process each line
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
     
     const values = lines[i].split(',').map(v => v.trim());
     
     // Skip if we don't have enough values
-    if (values.length < 2) continue;
+    if (values.length < headers.length) continue;
     
     const timestamp = values[timestampIndex];
     
     // Process each column (except the timestamp column) as a separate series
-    for (let j = 0; j < values.length; j++) {
+    for (let j = 0; j < headers.length; j++) {
       if (j === timestampIndex) continue; // Skip the timestamp column
       
-      // Skip if column index is out of bounds in the headers array
-      if (j >= headers.length) continue;
-      
       const seriesId = headers[j];
-      const valueStr = values[j];
-      
-      // Skip empty cells
-      if (!valueStr.trim()) continue;
-      
-      const value = parseFloat(valueStr);
+      const value = parseFloat(values[j]);
       
       // Skip if not a valid number
       if (isNaN(value)) continue;
@@ -111,7 +100,7 @@ const parseWideFormatCSV = (csvContent: string): TimeSeriesData => {
         timestamp: timestamp,
         value: value,
         seriesId: seriesId,
-        category: seriesId // Use series name as category by default
+        category: seriesId, // Use series name as category by default
       });
     }
   }
@@ -156,24 +145,16 @@ const parseWideFormatTSV = (tsvContent: string): TimeSeriesData => {
     const values = lines[i].split('\t').map(v => v.trim());
     
     // Skip if we don't have enough values
-    if (values.length < 2) continue;
+    if (values.length < headers.length) continue;
     
     const timestamp = values[timestampIndex];
     
     // Process each column (except the timestamp column) as a separate series
-    for (let j = 0; j < values.length; j++) {
+    for (let j = 0; j < headers.length; j++) {
       if (j === timestampIndex) continue; // Skip the timestamp column
       
-      // Skip if column index is out of bounds in the headers array
-      if (j >= headers.length) continue;
-      
       const seriesId = headers[j];
-      const valueStr = values[j];
-      
-      // Skip empty cells
-      if (!valueStr.trim()) continue;
-      
-      const value = parseFloat(valueStr);
+      const value = parseFloat(values[j]);
       
       // Skip if not a valid number
       if (isNaN(value)) continue;
@@ -182,7 +163,7 @@ const parseWideFormatTSV = (tsvContent: string): TimeSeriesData => {
         timestamp: timestamp,
         value: value,
         seriesId: seriesId,
-        category: seriesId // Use series name as category by default
+        category: seriesId, // Use series name as category by default
       });
     }
   }
@@ -204,18 +185,14 @@ const parseLongFormatCSV = (csvContent: string, options: ImportOptions): TimeSer
   const lines = csvContent.split('\n').filter(line => line.trim());
   const headers = lines[0].split(',').map(h => h.trim());
   
-  if (!options.timestampColumn || !options.valueColumn || !options.seriesIdColumn) {
-    throw new Error("For long format data, you must specify the timestamp, value, and series ID columns");
-  }
-  
   const timestampIndex = headers.indexOf(options.timestampColumn);
   const valueIndex = headers.indexOf(options.valueColumn);
-  const seriesIdIndex = headers.indexOf(options.seriesIdColumn);
+  const seriesIdIndex = options.seriesIdColumn ? headers.indexOf(options.seriesIdColumn) : -1;
   const categoryIndex = options.categoryColumn ? headers.indexOf(options.categoryColumn) : -1;
   const subjectIdIndex = options.subjectIdColumn ? headers.indexOf(options.subjectIdColumn) : -1;
   
-  if (timestampIndex === -1 || valueIndex === -1 || seriesIdIndex === -1) {
-    throw new Error(`Required columns not found in CSV data. Cannot find '${options.timestampColumn}', '${options.valueColumn}', or '${options.seriesIdColumn}'`);
+  if (timestampIndex === -1 || valueIndex === -1) {
+    throw new Error(`Required columns not found in CSV data. Cannot find '${options.timestampColumn}' or '${options.valueColumn}'`);
   }
   
   const dataPoints: DataPoint[] = [];
@@ -232,7 +209,7 @@ const parseLongFormatCSV = (csvContent: string, options: ImportOptions): TimeSer
     dataPoints.push({
       timestamp: values[timestampIndex],
       value: value,
-      seriesId: values[seriesIdIndex],
+      ...(seriesIdIndex > -1 && { seriesId: values[seriesIdIndex] }),
       ...(categoryIndex > -1 && { category: values[categoryIndex] }),
       ...(subjectIdIndex > -1 && { subjectId: values[subjectIdIndex] }),
     });

@@ -44,17 +44,12 @@ const AnalysisPage = () => {
     setAnalysisResult(result);
   };
   
-  const handleBackToHome = () => {
-    // Navigate back without clearing data
-    navigate("/", { state: { preserveData: true }});
-  };
-  
   return (
     <PageContainer>
       <div className="flex flex-col space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Data Analysis</h1>
-          <Button variant="outline" size="sm" onClick={handleBackToHome}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Home
           </Button>

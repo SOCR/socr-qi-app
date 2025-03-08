@@ -56,10 +56,11 @@ const Header = () => {
               alt="SOCR Logo" 
               className="h-8 w-auto mr-2" 
               onError={(e) => {
-                // Fallback to icon if image fails to load
+                // Fallback to text if image fails to load
                 e.currentTarget.style.display = 'none';
               }}
             />
+            <Activity className="h-6 w-6 text-primary" />
           </a>
           <h1 className="text-xl font-bold text-gray-800">
             SOCR Quality Improvement App
