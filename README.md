@@ -1,22 +1,18 @@
 # SOCR Quality Improvement (QI) Webapp Project
 
-## How can I edit this code?
+![](https://github.com/SOCR/socr-qi-app/blob/main/SOCR_QI_Webapp.png?raw=true)
 
-There are several ways of editing your application.
 
-**Use Lovable**
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/297617c1-f914-42fa-a586-4c10ceffc22b) and start prompting.
+## Technical Documentation
 
-Changes made via Lovable will be committed automatically to this repo.
+ * [Live QI App Demo](https://socr-qi-app.lovable.app/)
+ 
+ * To [update and edit the project](https://lovable.dev/projects/297617c1-f914-42fa-a586-4c10ceffc22b).
 
-**Use your preferred IDE**
+ * To [deploy this project open](https://lovable.dev/projects/297617c1-f914-42fa-a586-4c10ceffc22b) and click on Share and Publish.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+ * There are several ways of editing the QI application. Changes made via Lovable will be committed automatically to this repo. Any other IDE can also be used to work locally, clone this repo and push changes. Pushed changes will also be reflected in Lovable. Local editing an dtesting only requires having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating). Follow these steps:
 
 ```sh
 # Step 1: Clone the repository using the project's Git URL.
@@ -32,34 +28,10 @@ npm i
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+ Alternatively, the code can be edited directly in GitHub by navigating to the desired file(s), clicking the "Edit" button (pencil icon) at the top right of the file view, and ensuring that revisions are committed.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+ * This project is built with Vite, TypeScript, React, shadcn-ui, and Tailwind CSS.
 
-**Use GitHub Codespaces**
+## Contact
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with .
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/297617c1-f914-42fa-a586-4c10ceffc22b) and click on Share -> Publish.
-
-## I want to use a custom domain - is that possible?
-
-We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)
+[SOCR Team](https://www.socr.umich.edu/people/)
