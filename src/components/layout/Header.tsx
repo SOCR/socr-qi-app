@@ -52,15 +52,14 @@ const Header = () => {
             className="flex items-center"
           >
             <img 
-              src="/lovable-uploads/182dfcda-d2cf-44f1-98a0-8baaba5025fc.png" 
+              src="/lovable-uploads/085562a1-f0fd-40e9-857b-4f9b7dfdd9ff.png" 
               alt="SOCR Logo" 
               className="h-8 w-auto mr-2" 
               onError={(e) => {
-                // Fallback to text if image fails to load
+                // Fallback to icon if image fails to load
                 e.currentTarget.style.display = 'none';
               }}
             />
-            <Activity className="h-6 w-6 text-primary" />
           </a>
           <h1 className="text-xl font-bold text-gray-800">
             SOCR Quality Improvement App
