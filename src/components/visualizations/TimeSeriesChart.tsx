@@ -1,10 +1,9 @@
-
 import React, { useMemo, useState, useRef } from "react";
 import { TimeSeriesData, AnalysisResult } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
-  ResponsiveContainer, ReferenceLine, Brush, ZoomIn, ZoomOut
+  ResponsiveContainer, ReferenceLine, Brush
 } from "recharts";
 import { formatDate } from "@/lib/dataUtils";
 import { Button } from "@/components/ui/button";
@@ -18,17 +17,23 @@ interface TimeSeriesChartProps {
   height?: number;
 }
 
-// Define chart data type to avoid TypeScript errors
 interface ChartDataPoint {
   timestamp: number;
   formattedTime: string;
-  [key: string]: any; // Allow dynamic series names as properties
+  [key: string]: any;
 }
 
-// Color palette for multiple series
 const COLORS = [
-  "#3788C7", "#FF6347", "#32CD32", "#FFD700", "#9370DB", 
-  "#20B2AA", "#FF69B4", "#8A2BE2", "#00CED1", "#FF7F50"
+  "#8B5CF6",
+  "#F97316",
+  "#0EA5E9",
+  "#10B981",
+  "#EC4899",
+  "#F59E0B",
+  "#6366F1",
+  "#14B8A6",
+  "#EF4444",
+  "#8B5CF6"
 ];
 
 const TimeSeriesChart = ({ 
@@ -41,11 +46,8 @@ const TimeSeriesChart = ({
   const [zoomDomain, setZoomDomain] = useState<{ start: number; end: number } | null>(null);
   const chartRef = useRef<any>(null);
   
-  // Prepare chart data to support multiple series in wide format
   const chartData = useMemo<ChartDataPoint[]>(() => {
-    // For wide format data (multiple series in columns)
     if (data.metadata?.format === 'wide') {
-      // Extract all unique series IDs from the dataPoints
       const seriesIds = new Set<string>();
       data.dataPoints.forEach(point => {
         if (point.seriesId) {
@@ -53,7 +55,6 @@ const TimeSeriesChart = ({
         }
       });
       
-      // Group data points by timestamp
       const groupedByTimestamp: { [key: string]: ChartDataPoint } = {};
       
       data.dataPoints.forEach(point => {
@@ -70,13 +71,11 @@ const TimeSeriesChart = ({
         }
       });
       
-      // Convert to array and sort by timestamp
       const formattedData = Object.values(groupedByTimestamp);
       formattedData.sort((a, b) => a.timestamp - b.timestamp);
       
       return formattedData;
     } else {
-      // For regular time series (single series)
       const formattedData = data.dataPoints.map(point => {
         const chartPoint: ChartDataPoint = {
           timestamp: new Date(point.timestamp).getTime(),
@@ -90,10 +89,8 @@ const TimeSeriesChart = ({
         return chartPoint;
       });
       
-      // Sort by timestamp
       formattedData.sort((a, b) => a.timestamp - b.timestamp);
       
-      // Add analysis predictions if available
       if (analysisResult) {
         switch (analysisResult.type) {
           case 'regression':
@@ -103,7 +100,6 @@ const TimeSeriesChart = ({
               }
             });
             
-            // Add forecast points to the chart data
             if (analysisResult.results.forecastPoints) {
               analysisResult.results.forecastPoints.forEach(forecastPoint => {
                 formattedData.push({
@@ -120,7 +116,6 @@ const TimeSeriesChart = ({
           case 'forecasting':
             const movingAverages = analysisResult.results.movingAverages;
             
-            // Match predictions with actual data points
             movingAverages.forEach(avgPoint => {
               const timestamp = new Date(avgPoint.timestamp).getTime();
               const existingPoint = formattedData.find(p => p.timestamp === timestamp);
@@ -128,7 +123,6 @@ const TimeSeriesChart = ({
               if (existingPoint) {
                 existingPoint.predicted = avgPoint.predicted;
               } else if (avgPoint.predicted !== undefined) {
-                // This is a forecast point
                 formattedData.push({
                   timestamp,
                   formattedTime: formatDate(avgPoint.timestamp),
@@ -153,7 +147,7 @@ const TimeSeriesChart = ({
               }
             });
             break;
-
+            
           case 'logistic':
           case 'poisson':
             if (analysisResult.results.predictions) {
@@ -171,7 +165,6 @@ const TimeSeriesChart = ({
     }
   }, [data, analysisResult]);
   
-  // Extract series keys from the first data point (excluding timestamp and formattedTime)
   const seriesKeys = useMemo(() => {
     if (chartData.length === 0) return [];
     
@@ -183,13 +176,11 @@ const TimeSeriesChart = ({
     );
   }, [chartData]);
   
-  // Determine if we should show anomalies
   const showAnomalies = useMemo(() => {
     return analysisResult?.type === 'anomaly' && 
            chartData.some(point => point.isAnomaly);
   }, [analysisResult, chartData]);
   
-  // Determine if we should show predictions
   const showPredictions = useMemo(() => {
     return (analysisResult?.type === 'regression' || 
             analysisResult?.type === 'forecasting' || 
@@ -198,21 +189,17 @@ const TimeSeriesChart = ({
            chartData.some(point => point.predicted !== undefined);
   }, [analysisResult, chartData]);
   
-  // Determine if we should show forecast
   const showForecast = useMemo(() => {
     return chartData.some(point => point.isForecast);
   }, [chartData]);
   
-  // Get the mean and threshold values for reference lines if available
   const mean = analysisResult?.results?.mean;
   const threshold = analysisResult?.results?.threshold;
 
-  // Handle zoom in/out
   const handleZoomIn = () => {
     if (!chartData.length) return;
     
     if (zoomDomain) {
-      // Calculate new domain by zooming in 25%
       const range = zoomDomain.end - zoomDomain.start;
       const quarter = range / 4;
       setZoomDomain({
@@ -220,7 +207,6 @@ const TimeSeriesChart = ({
         end: zoomDomain.end - quarter
       });
     } else {
-      // Initial zoom from full view
       const minTime = chartData[0].timestamp;
       const maxTime = chartData[chartData.length - 1].timestamp;
       const range = maxTime - minTime;
@@ -237,7 +223,6 @@ const TimeSeriesChart = ({
     if (!chartData.length) return;
     
     if (zoomDomain) {
-      // Calculate new domain by zooming out 33%
       const range = zoomDomain.end - zoomDomain.start;
       const third = range / 3;
       
@@ -248,7 +233,6 @@ const TimeSeriesChart = ({
       const newEnd = Math.min(maxTime, zoomDomain.end + third);
       
       if (newStart === minTime && newEnd === maxTime) {
-        // Reset zoom if we're showing almost everything
         setZoomDomain(null);
       } else {
         setZoomDomain({
@@ -263,7 +247,6 @@ const TimeSeriesChart = ({
     setZoomDomain(null);
   };
   
-  // Handle brush change
   const handleBrushChange = (domain: any) => {
     if (domain && domain.startIndex !== undefined && domain.endIndex !== undefined) {
       const start = chartData[domain.startIndex]?.timestamp;
@@ -365,7 +348,6 @@ const TimeSeriesChart = ({
               }}
             />
             
-            {/* Render lines for all series keys */}
             {seriesKeys.map((key, index) => (
               <Line
                 key={key}
@@ -376,7 +358,6 @@ const TimeSeriesChart = ({
                 strokeWidth={2}
                 dot={key === 'value' && showAnomalies ? (props) => {
                   const { cx, cy, payload } = props;
-                  // Highlight anomalies if available
                   if (payload.isAnomaly) {
                     return (
                       <circle 
@@ -397,7 +378,6 @@ const TimeSeriesChart = ({
               />
             ))}
             
-            {/* Show prediction line if available */}
             {showPredictions && (
               <Line 
                 type="monotone" 
@@ -406,7 +386,6 @@ const TimeSeriesChart = ({
                 strokeWidth={2}
                 strokeDasharray={showForecast ? "0" : "0"}
                 dot={(props) => {
-                  // Only show dots for forecast points
                   const { cx, cy, payload } = props;
                   if (payload.isForecast) {
                     return <circle cx={cx} cy={cy} r={3} fill="#55A5DA" stroke="none" />;
@@ -419,7 +398,6 @@ const TimeSeriesChart = ({
               />
             )}
             
-            {/* Reference lines */}
             {mean !== undefined && (
               <ReferenceLine 
                 y={mean} 

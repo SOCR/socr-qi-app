@@ -1,6 +1,6 @@
 
-import React, { useState } from "react";
-import { useLocation } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import PageContainer from "@/components/layout/PageContainer";
 import { TimeSeriesData, AnalysisResult } from "@/lib/types";
 import AnalysisCard from "@/components/analysis/AnalysisCard";
@@ -10,15 +10,39 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, ArrowLeft } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
 const AnalysisPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [data, setData] = useState<TimeSeriesData | null>(null);
   
-  // Get data from location state or redirect if none
-  const data = location.state?.data as TimeSeriesData | undefined;
+  // First try to get data from location state
+  useEffect(() => {
+    const locationData = location.state?.data as TimeSeriesData | undefined;
+    if (locationData) {
+      setData(locationData);
+      return;
+    }
+    
+    // If no location data, try to load from localStorage
+    const savedData = localStorage.getItem('timeseriesData');
+    if (savedData) {
+      try {
+        const parsedData = JSON.parse(savedData);
+        setData(parsedData);
+      } catch (err) {
+        console.error("Error loading saved data:", err);
+      }
+    }
+  }, [location]);
+  
+  const handleAnalysisComplete = (result: AnalysisResult) => {
+    setAnalysisResult(result);
+    
+    // Also save analysis result to localStorage
+    localStorage.setItem('analysisResult', JSON.stringify(result));
+  };
   
   if (!data) {
     return (
@@ -31,27 +55,23 @@ const AnalysisPage = () => {
               No data available for analysis. Please import or generate data first.
             </AlertDescription>
           </Alert>
-          <Button onClick={() => navigate("/")} variant="outline">
+          <Button onClick={() => navigate("/data")} variant="outline">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Go Back to Home
+            Go to Data Page
           </Button>
         </div>
       </PageContainer>
     );
   }
   
-  const handleAnalysisComplete = (result: AnalysisResult) => {
-    setAnalysisResult(result);
-  };
-  
   return (
     <PageContainer>
       <div className="flex flex-col space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Data Analysis</h1>
-          <Button variant="outline" size="sm" onClick={() => navigate("/")}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/data")}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Home
+            Back to Data
           </Button>
         </div>
         
