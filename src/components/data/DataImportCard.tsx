@@ -1,0 +1,122 @@
+
+import React, { useState } from "react";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { FileUp, FilePlus, AlertCircle } from "lucide-react";
+import { parseCSVData } from "@/lib/dataUtils";
+import { useToast } from "@/hooks/use-toast";
+
+interface DataImportCardProps {
+  onDataImported: (data: any) => void;
+}
+
+const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
+  const [file, setFile] = useState<File | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      setFile(selectedFile);
+      setError(null);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!file) {
+      setError("Please select a file to import");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const content = await file.text();
+      
+      // Parse CSV file
+      const data = parseCSVData(content, {
+        timestampColumn: "Timestamp",
+        valueColumn: "Value",
+        categoryColumn: "Category",
+        subjectIdColumn: "SubjectID"
+      });
+      
+      onDataImported(data);
+      toast({
+        title: "Data imported successfully",
+        description: `Imported ${data.dataPoints.length} data points`,
+      });
+    } catch (err) {
+      console.error("Error importing data:", err);
+      setError(err instanceof Error ? err.message : "Failed to import data");
+      toast({
+        title: "Import failed",
+        description: err instanceof Error ? err.message : "Failed to import data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle className="flex items-center">
+          <FileUp className="mr-2 h-5 w-5" />
+          Import Data
+        </CardTitle>
+        <CardDescription>
+          Import your time-series data from a CSV file
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+            <Input
+              type="file"
+              accept=".csv"
+              onChange={handleFileChange}
+              className="hidden"
+              id="csv-upload"
+            />
+            <label
+              htmlFor="csv-upload"
+              className="flex flex-col items-center justify-center cursor-pointer"
+            >
+              <FilePlus className="h-10 w-10 text-gray-400 mb-2" />
+              <span className="text-sm font-medium text-gray-900">
+                {file ? file.name : "Choose a CSV file"}
+              </span>
+              <span className="text-xs text-gray-500 mt-1">
+                CSV with Timestamp, Value columns required
+              </span>
+            </label>
+          </div>
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+        </div>
+      </CardContent>
+      <CardFooter className="flex justify-between">
+        <Button variant="outline" onClick={() => setFile(null)} disabled={!file || isLoading}>
+          Clear
+        </Button>
+        <Button onClick={handleImport} disabled={!file || isLoading}>
+          {isLoading ? "Importing..." : "Import"}
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+};
+
+export default DataImportCard;
