@@ -1,4 +1,3 @@
-
 import React, { useMemo } from "react";
 import { TimeSeriesData, AnalysisResult } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +39,7 @@ const TimeSeriesChart = ({
       formattedTime: formatDate(point.timestamp),
       value: point.value,
       category: point.category
-    }));
+    } as ChartDataPoint));
     
     // Sort by timestamp
     formattedData.sort((a, b) => a.timestamp - b.timestamp);
@@ -61,9 +60,10 @@ const TimeSeriesChart = ({
               formattedData.push({
                 timestamp: new Date(forecastPoint.timestamp).getTime(),
                 formattedTime: formatDate(forecastPoint.timestamp),
+                value: 0,
                 predicted: forecastPoint.value,
                 isForecast: true
-              });
+              } as ChartDataPoint);
             });
           }
           break;
@@ -83,9 +83,10 @@ const TimeSeriesChart = ({
               formattedData.push({
                 timestamp,
                 formattedTime: formatDate(avgPoint.timestamp),
+                value: 0,
                 predicted: avgPoint.predicted,
                 isForecast: true
-              });
+              } as ChartDataPoint);
             }
           });
           break;
