@@ -1,4 +1,3 @@
-
 import { TimeSeriesData, AnalysisResult, AnalysisOptions, DataPoint } from "./types";
 import { generateId, sortDataPointsByTime } from "./dataUtils";
 
@@ -16,6 +15,10 @@ export const analyzeTimeSeries = (
       return performDescriptiveAnalysis(data, sortedDataPoints);
     case 'regression':
       return performRegressionAnalysis(data, sortedDataPoints, options.parameters);
+    case 'logistic-regression':
+      return performLogisticRegression(data, sortedDataPoints, options.parameters);
+    case 'poisson-regression':
+      return performPoissonRegression(data, sortedDataPoints, options.parameters);
     case 'classification':
       return performClassificationAnalysis(data, sortedDataPoints, options.parameters);
     case 'forecasting':
@@ -377,3 +380,266 @@ const performAnomalyDetection = (
     createdAt: new Date().toISOString()
   };
 };
+
+// Logistic regression for binary outcomes
+const performLogisticRegression = (
+  data: TimeSeriesData,
+  sortedDataPoints: DataPoint[],
+  parameters?: Record<string, any>
+): AnalysisResult => {
+  // Extract parameters
+  const regularization = parameters?.regularization || 0.1;
+  const threshold = parameters?.threshold || 0.5;
+  
+  // Convert timestamps to numeric values (milliseconds since epoch)
+  const x = sortedDataPoints.map(point => new Date(point.timestamp).getTime());
+  const y = sortedDataPoints.map(point => point.value);
+  
+  // Normalize x values for numerical stability
+  const xMin = Math.min(...x);
+  const xRange = Math.max(...x) - xMin;
+  const xNorm = x.map(val => (val - xMin) / xRange);
+  
+  // Normalize y values to 0-1 range for binary classification
+  const yMax = Math.max(...y);
+  const yMin = Math.min(...y);
+  const yNorm = y.map(val => (val - yMin) / (yMax - yMin > 0 ? yMax - yMin : 1));
+  
+  // Simple logistic regression using gradient descent
+  let beta0 = 0; // intercept
+  let beta1 = 0; // slope
+  const learningRate = 0.03;
+  const iterations = 1000;
+  
+  // Sigmoid function
+  const sigmoid = (z: number) => 1 / (1 + Math.exp(-z));
+  
+  // Perform gradient descent to estimate parameters
+  for (let iter = 0; iter < iterations; iter++) {
+    let gradientB0 = 0;
+    let gradientB1 = 0;
+    
+    for (let i = 0; i < xNorm.length; i++) {
+      const p = sigmoid(beta0 + beta1 * xNorm[i]);
+      gradientB0 += (p - yNorm[i]);
+      gradientB1 += (p - yNorm[i]) * xNorm[i];
+      
+      // Add L2 regularization
+      gradientB1 += regularization * beta1;
+    }
+    
+    gradientB0 /= xNorm.length;
+    gradientB1 /= xNorm.length;
+    
+    beta0 -= learningRate * gradientB0;
+    beta1 -= learningRate * gradientB1;
+  }
+  
+  // Generate probabilities and predicted classes
+  const probabilities = xNorm.map(xVal => sigmoid(beta0 + beta1 * xVal));
+  const predictions = probabilities.map(p => p >= threshold ? 1 : 0);
+  
+  // Calculate accuracy metrics if we have binary y values
+  const binarizedY = yNorm.map(y => y >= 0.5 ? 1 : 0);
+  
+  let truePositives = 0;
+  let falsePositives = 0;
+  let trueNegatives = 0;
+  let falseNegatives = 0;
+  
+  for (let i = 0; i < predictions.length; i++) {
+    if (predictions[i] === 1 && binarizedY[i] === 1) truePositives++;
+    if (predictions[i] === 1 && binarizedY[i] === 0) falsePositives++;
+    if (predictions[i] === 0 && binarizedY[i] === 0) trueNegatives++;
+    if (predictions[i] === 0 && binarizedY[i] === 1) falseNegatives++;
+  }
+  
+  const accuracy = (truePositives + trueNegatives) / predictions.length;
+  const precision = truePositives / (truePositives + falsePositives) || 0;
+  const recall = truePositives / (truePositives + falseNegatives) || 0;
+  const f1Score = 2 * (precision * recall) / (precision + recall) || 0;
+  
+  // Calculate the deviance (negative log-likelihood)
+  let deviance = 0;
+  for (let i = 0; i < xNorm.length; i++) {
+    const p = probabilities[i];
+    deviance -= binarizedY[i] * Math.log(p + 1e-10) + (1 - binarizedY[i]) * Math.log(1 - p + 1e-10);
+  }
+  
+  // Calculate AUC (area under ROC curve) - simplified version
+  const sortedPairs = probabilities.map((p, i) => ({ prob: p, actual: binarizedY[i] }))
+    .sort((a, b) => b.prob - a.prob);
+  
+  let auc = 0;
+  let truePositiveRate = 0;
+  let previousFalsePositiveRate = 0;
+  let positiveCount = binarizedY.filter(y => y === 1).length;
+  let negativeCount = binarizedY.filter(y => y === 0).length;
+  
+  if (positiveCount > 0 && negativeCount > 0) {
+    let truePositiveSoFar = 0;
+    let falsePositiveSoFar = 0;
+    
+    for (let i = 0; i < sortedPairs.length; i++) {
+      if (sortedPairs[i].actual === 1) {
+        truePositiveSoFar++;
+      } else {
+        falsePositiveSoFar++;
+        let falsePositiveRate = falsePositiveSoFar / negativeCount;
+        truePositiveRate = truePositiveSoFar / positiveCount;
+        auc += (falsePositiveRate - previousFalsePositiveRate) * truePositiveRate;
+        previousFalsePositiveRate = falsePositiveRate;
+      }
+    }
+    // Add the final rectangle
+    auc += (1 - previousFalsePositiveRate) * truePositiveRate;
+  }
+  
+  return {
+    id: generateId(),
+    type: 'logistic-regression',
+    timeSeriesId: data.id,
+    results: {
+      intercept: beta0,
+      slope: beta1,
+      probabilities,
+      predictions: probabilities.map(p => p * (yMax - yMin) + yMin), // Rescale to original range
+      threshold,
+      summary: `Logistic regression found a ${beta1 > 0 ? 'positive' : 'negative'} relationship 
+      with coefficient ${beta1.toFixed(4)}. The model achieved an accuracy of 
+      ${(accuracy * 100).toFixed(2)}% and AUC of ${auc.toFixed(3)}.`
+    },
+    metrics: {
+      accuracy,
+      precision,
+      recall,
+      f1Score,
+      auc,
+      deviance
+    },
+    createdAt: new Date().toISOString()
+  };
+};
+
+// Poisson regression for count data
+const performPoissonRegression = (
+  data: TimeSeriesData,
+  sortedDataPoints: DataPoint[],
+  parameters?: Record<string, any>
+): AnalysisResult => {
+  // Extract parameters
+  const linkFunction = parameters?.linkFunction || 'log';
+  
+  // Convert timestamps to numeric values (milliseconds since epoch)
+  const x = sortedDataPoints.map(point => new Date(point.timestamp).getTime());
+  const y = sortedDataPoints.map(point => Math.max(0, point.value)); // Ensure all values are non-negative
+  
+  // Normalize x values for numerical stability
+  const xMin = Math.min(...x);
+  const xRange = Math.max(...x) - xMin;
+  const xNorm = x.map(val => (val - xMin) / xRange);
+  
+  // Link functions
+  const applyLink = (mu: number): number => {
+    switch (linkFunction) {
+      case 'log': return Math.log(mu + 1e-10);
+      case 'identity': return mu;
+      case 'sqrt': return Math.sqrt(mu + 1e-10);
+      default: return Math.log(mu + 1e-10);
+    }
+  };
+  
+  const applyInverseLink = (eta: number): number => {
+    switch (linkFunction) {
+      case 'log': return Math.exp(eta);
+      case 'identity': return Math.max(0, eta);
+      case 'sqrt': return eta * eta;
+      default: return Math.exp(eta);
+    }
+  };
+  
+  // Simple Poisson regression using iteratively reweighted least squares (simplified)
+  let beta0 = 0; // intercept
+  let beta1 = 0; // slope
+  const iterations = 20;
+  
+  // Perform IRLS to estimate parameters
+  for (let iter = 0; iter < iterations; iter++) {
+    const eta = xNorm.map(xVal => beta0 + beta1 * xVal);
+    const mu = eta.map(applyInverseLink);
+    
+    let sumW = 0;
+    let sumWZ = 0;
+    let sumWX = 0;
+    let sumWZX = 0;
+    let sumWXX = 0;
+    
+    for (let i = 0; i < xNorm.length; i++) {
+      // Calculate working weight and response
+      const w = mu[i]; // Weight is the mean for Poisson
+      const z = eta[i] + (y[i] - mu[i]) / (mu[i] || 1e-10); // Working response
+      
+      sumW += w;
+      sumWZ += w * z;
+      sumWX += w * xNorm[i];
+      sumWZX += w * z * xNorm[i];
+      sumWXX += w * xNorm[i] * xNorm[i];
+    }
+    
+    // Update coefficients
+    const denominator = sumW * sumWXX - sumWX * sumWX;
+    if (Math.abs(denominator) > 1e-10) {
+      const newBeta0 = (sumWZ * sumWXX - sumWZX * sumWX) / denominator;
+      const newBeta1 = (sumW * sumWZX - sumWX * sumWZ) / denominator;
+      
+      beta0 = newBeta0;
+      beta1 = newBeta1;
+    }
+  }
+  
+  // Generate predictions
+  const predictions = xNorm.map(xVal => applyInverseLink(beta0 + beta1 * xVal));
+  
+  // Calculate metrics
+  const residuals = y.map((yVal, i) => yVal - predictions[i]);
+  const deviance = y.reduce((sum, yVal, i) => {
+    const muVal = predictions[i];
+    return sum + 2 * (yVal * Math.log((yVal || 1e-10) / (muVal || 1e-10)) - (yVal - muVal));
+  }, 0);
+  
+  const nullDeviance = y.reduce((sum, yVal) => {
+    const yMean = y.reduce((a, b) => a + b, 0) / y.length;
+    return sum + 2 * (yVal * Math.log((yVal || 1e-10) / (yMean || 1e-10)) - (yVal - yMean));
+  }, 0);
+  
+  const pseudoRSquared = 1 - (deviance / nullDeviance);
+  
+  // Calculate squared errors for RMSE
+  const squaredErrors = residuals.map(r => r * r);
+  const mse = squaredErrors.reduce((a, b) => a + b, 0) / y.length;
+  const rmse = Math.sqrt(mse);
+  
+  return {
+    id: generateId(),
+    type: 'poisson-regression',
+    timeSeriesId: data.id,
+    results: {
+      intercept: beta0,
+      slope: beta1,
+      linkFunction,
+      predictions,
+      summary: `Poisson regression with ${linkFunction} link found a ${beta1 > 0 ? 'positive' : 'negative'} 
+      relationship with coefficient ${beta1.toFixed(4)}. The model explains ${(pseudoRSquared * 100).toFixed(2)}% 
+      of the null deviance. RMSE: ${rmse.toFixed(2)}.`
+    },
+    metrics: {
+      deviance,
+      nullDeviance,
+      pseudoRSquared,
+      mse,
+      rmse
+    },
+    createdAt: new Date().toISOString()
+  };
+};
+

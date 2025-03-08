@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnalysisResult } from "@/lib/types";
-import { BarChart3, LineChart, Layers, AlertTriangle, Activity } from "lucide-react";
+import { BarChart3, LineChart, Layers, AlertTriangle, Activity, TrendingUp } from "lucide-react";
 
 interface AnalysisResultsProps {
   result: AnalysisResult;
@@ -17,13 +17,28 @@ const AnalysisResults = ({ result }: AnalysisResultsProps) => {
         return <BarChart3 className="h-5 w-5 mr-2" />;
       case "regression":
       case "forecasting":
-        return <LineChart className="h-5 w-5 mr-2" />;
+      case "logistic-regression":
+      case "poisson-regression":
+        return <TrendingUp className="h-5 w-5 mr-2" />;
       case "classification":
         return <Layers className="h-5 w-5 mr-2" />;
       case "anomaly":
         return <AlertTriangle className="h-5 w-5 mr-2" />;
       default:
         return <Activity className="h-5 w-5 mr-2" />;
+    }
+  };
+  
+  const getTitle = () => {
+    switch (result.type) {
+      case "descriptive": return "Descriptive Statistics";
+      case "regression": return "Linear Regression";
+      case "logistic-regression": return "Logistic Regression";
+      case "poisson-regression": return "Poisson Regression";
+      case "classification": return "Classification";
+      case "forecasting": return "Forecasting";
+      case "anomaly": return "Anomaly Detection";
+      default: return result.type.charAt(0).toUpperCase() + result.type.slice(1);
     }
   };
   
@@ -38,7 +53,7 @@ const AnalysisResults = ({ result }: AnalysisResultsProps) => {
           <div>
             <CardTitle className="flex items-center">
               {getIcon()}
-              {result.type.charAt(0).toUpperCase() + result.type.slice(1)} Analysis Results
+              {getTitle()} Results
             </CardTitle>
             <CardDescription>
               Analysis performed at {formatDate(result.createdAt)}
@@ -116,7 +131,7 @@ const AnalysisResults = ({ result }: AnalysisResultsProps) => {
               )}
               
               {/* Regression metrics */}
-              {result.type === 'regression' && (
+              {(result.type === 'regression' || result.type === 'logistic-regression' || result.type === 'poisson-regression') && (
                 <>
                   <div className="p-4 bg-card border rounded-md">
                     <div className="text-sm font-medium text-muted-foreground mb-1">
@@ -127,14 +142,38 @@ const AnalysisResults = ({ result }: AnalysisResultsProps) => {
                     </div>
                   </div>
                   
-                  <div className="p-4 bg-card border rounded-md">
-                    <div className="text-sm font-medium text-muted-foreground mb-1">
-                      R-SQUARED
+                  {result.results.rSquared !== undefined && (
+                    <div className="p-4 bg-card border rounded-md">
+                      <div className="text-sm font-medium text-muted-foreground mb-1">
+                        R-SQUARED
+                      </div>
+                      <div className="text-2xl font-bold">
+                        {result.results.rSquared.toFixed(4)}
+                      </div>
                     </div>
-                    <div className="text-2xl font-bold">
-                      {result.results.rSquared.toFixed(4)}
+                  )}
+                  
+                  {result.metrics?.auc !== undefined && (
+                    <div className="p-4 bg-card border rounded-md">
+                      <div className="text-sm font-medium text-muted-foreground mb-1">
+                        AUC
+                      </div>
+                      <div className="text-2xl font-bold">
+                        {result.metrics.auc.toFixed(4)}
+                      </div>
                     </div>
-                  </div>
+                  )}
+                  
+                  {result.metrics?.pseudoRSquared !== undefined && (
+                    <div className="p-4 bg-card border rounded-md">
+                      <div className="text-sm font-medium text-muted-foreground mb-1">
+                        PSEUDO R-SQUARED
+                      </div>
+                      <div className="text-2xl font-bold">
+                        {result.metrics.pseudoRSquared.toFixed(4)}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
               

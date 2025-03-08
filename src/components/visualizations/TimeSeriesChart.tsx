@@ -1,27 +1,43 @@
-import React, { useMemo } from "react";
+
+import React, { useMemo, useState } from "react";
 import { TimeSeriesData, AnalysisResult } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
+import { 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
+  ResponsiveContainer, ReferenceLine, ZoomOutMap
+} from "recharts";
 import { formatDate } from "@/lib/dataUtils";
+import { Maximize, Minimize, ZoomIn } from "lucide-react";
 
 interface TimeSeriesChartProps {
-  data: TimeSeriesData;
+  data: TimeSeriesData | TimeSeriesData[];
   analysisResult?: AnalysisResult;
   title?: string;
   description?: string;
   height?: number;
 }
 
+// Color palette for multiple series
+const COLORS = [
+  "#8B5CF6", // Purple
+  "#3B82F6", // Blue
+  "#10B981", // Green
+  "#F59E0B", // Amber
+  "#EF4444", // Red
+  "#EC4899", // Pink
+  "#6366F1", // Indigo
+  "#14B8A6", // Teal
+  "#F97316", // Orange
+  "#8B5CF6", // Violet
+  "#06B6D4", // Cyan
+  "#D946EF", // Fuchsia
+];
+
 // Define chart data type to avoid TypeScript errors
 interface ChartDataPoint {
   timestamp: number;
   formattedTime: string;
-  value: number;
-  category?: string;
-  predicted?: number;
-  isAnomaly?: boolean;
-  zScore?: number;
-  isForecast?: boolean;
+  [key: string]: any; // For dynamic series values
 }
 
 const TimeSeriesChart = ({ 
@@ -31,117 +47,134 @@ const TimeSeriesChart = ({
   description,
   height = 300
 }: TimeSeriesChartProps) => {
+  const [zoomDomain, setZoomDomain] = useState<null | { x: [number, number], y: [number, number] }>(null);
+  const [isZoomed, setIsZoomed] = useState(false);
   
-  // Prepare chart data by combining the original data points with any analysis data
+  // Prepare chart data by combining all time series data points
   const chartData = useMemo<ChartDataPoint[]>(() => {
-    const formattedData = data.dataPoints.map(point => ({
-      timestamp: new Date(point.timestamp).getTime(),
-      formattedTime: formatDate(point.timestamp),
-      value: point.value,
-      category: point.category
-    } as ChartDataPoint));
+    const timeMap = new Map<number, ChartDataPoint>();
+    const allSeries = Array.isArray(data) ? data : [data];
     
-    // Sort by timestamp
-    formattedData.sort((a, b) => a.timestamp - b.timestamp);
-    
-    // Add analysis predictions if available
-    if (analysisResult) {
-      switch (analysisResult.type) {
-        case 'regression':
-          formattedData.forEach((point, index) => {
-            if (index < analysisResult.results.predictions.length) {
-              point.predicted = analysisResult.results.predictions[index];
-            }
+    // Process each time series
+    allSeries.forEach((series, seriesIndex) => {
+      const seriesName = series.name || `Series ${seriesIndex + 1}`;
+      
+      series.dataPoints.forEach(point => {
+        const timestamp = new Date(point.timestamp).getTime();
+        
+        if (!timeMap.has(timestamp)) {
+          timeMap.set(timestamp, {
+            timestamp,
+            formattedTime: formatDate(point.timestamp),
           });
-          
-          // Add forecast points to the chart data
-          if (analysisResult.results.forecastPoints) {
-            analysisResult.results.forecastPoints.forEach(forecastPoint => {
-              formattedData.push({
-                timestamp: new Date(forecastPoint.timestamp).getTime(),
-                formattedTime: formatDate(forecastPoint.timestamp),
-                value: 0,
-                predicted: forecastPoint.value,
-                isForecast: true
-              } as ChartDataPoint);
-            });
+        }
+        
+        // Add the value for this series at this timestamp
+        const existingPoint = timeMap.get(timestamp)!;
+        existingPoint[seriesName] = point.value;
+        
+        // If we have analysis results for this series, add predictions/anomalies
+        if (analysisResult && analysisResult.timeSeriesId === series.id) {
+          switch (analysisResult.type) {
+            case 'regression':
+            case 'logistic-regression':
+            case 'poisson-regression':
+              // Add predicted values if available in analysis results
+              const prediction = analysisResult.results.predictions?.[seriesIndex];
+              if (prediction !== undefined) {
+                existingPoint[`${seriesName}_predicted`] = prediction;
+              }
+              break;
+              
+            case 'anomaly':
+              // Mark anomalies if available
+              const anomalyInfo = analysisResult.results.anomalies?.find(
+                (a: any) => new Date(a.timestamp).getTime() === timestamp
+              );
+              if (anomalyInfo?.isAnomaly) {
+                existingPoint[`${seriesName}_anomaly`] = point.value;
+                existingPoint[`${seriesName}_zScore`] = anomalyInfo.zScore;
+              }
+              break;
           }
-          break;
-          
-        case 'forecasting':
-          const movingAverages = analysisResult.results.movingAverages;
-          
-          // Match predictions with actual data points
-          movingAverages.forEach(avgPoint => {
-            const timestamp = new Date(avgPoint.timestamp).getTime();
-            const existingPoint = formattedData.find(p => p.timestamp === timestamp);
-            
-            if (existingPoint) {
-              existingPoint.predicted = avgPoint.predicted;
-            } else if (avgPoint.predicted !== undefined) {
-              // This is a forecast point
-              formattedData.push({
-                timestamp,
-                formattedTime: formatDate(avgPoint.timestamp),
-                value: 0,
-                predicted: avgPoint.predicted,
-                isForecast: true
-              } as ChartDataPoint);
-            }
-          });
-          break;
-          
-        case 'anomaly':
-          const anomalies = analysisResult.results.anomalies;
-          
-          anomalies.forEach(anomalyPoint => {
-            const timestamp = new Date(anomalyPoint.timestamp).getTime();
-            const existingPoint = formattedData.find(p => p.timestamp === timestamp);
-            
-            if (existingPoint) {
-              existingPoint.isAnomaly = anomalyPoint.isAnomaly;
-              existingPoint.zScore = anomalyPoint.zScore;
-            }
-          });
-          break;
-      }
-    }
+        }
+      });
+    });
     
-    return formattedData;
+    // Convert map to array and sort by timestamp
+    const formattedData = Array.from(timeMap.values());
+    return formattedData.sort((a, b) => a.timestamp - b.timestamp);
   }, [data, analysisResult]);
   
-  // Determine if we should show anomalies
-  const showAnomalies = useMemo(() => {
-    return analysisResult?.type === 'anomaly' && 
-           chartData.some(point => point.isAnomaly);
-  }, [analysisResult, chartData]);
+  // Get all unique series names
+  const seriesNames = useMemo(() => {
+    const allSeries = Array.isArray(data) ? data : [data];
+    return allSeries.map(series => series.name || `Series ${allSeries.indexOf(series) + 1}`);
+  }, [data]);
   
-  // Determine if we should show predictions
-  const showPredictions = useMemo(() => {
-    return (analysisResult?.type === 'regression' || analysisResult?.type === 'forecasting') && 
-           chartData.some(point => point.predicted !== undefined);
-  }, [analysisResult, chartData]);
+  // Handle zoom reset
+  const handleResetZoom = () => {
+    setZoomDomain(null);
+    setIsZoomed(false);
+  };
   
-  // Determine if we should show forecast
-  const showForecast = useMemo(() => {
-    return chartData.some(point => point.isForecast);
-  }, [chartData]);
+  // Display multiple series and create a name for the chart
+  const chartTitle = useMemo(() => {
+    if (title) return title;
+    if (Array.isArray(data)) {
+      if (data.length === 1) return data[0].name;
+      return `Multiple Time Series (${data.length})`;
+    }
+    return data.name;
+  }, [title, data]);
   
-  // Get the mean and threshold values for reference lines if available
-  const mean = analysisResult?.results?.mean;
-  const threshold = analysisResult?.results?.threshold;
+  // Create description based on data
+  const chartDescription = useMemo(() => {
+    if (description) return description;
+    
+    const allSeries = Array.isArray(data) ? data : [data];
+    const totalPoints = allSeries.reduce(
+      (sum, series) => sum + series.dataPoints.length, 
+      0
+    );
+    
+    return `${totalPoints} data points across ${allSeries.length} series${
+      allSeries[0]?.metadata?.unit ? ` (${allSeries[0].metadata.unit})` : ''
+    }`;
+  }, [description, data]);
   
   return (
     <Card className="w-full">
       <CardHeader>
-        <CardTitle>{title || data.name}</CardTitle>
-        <CardDescription>
-          {description || `${data.dataPoints.length} data points${data.metadata?.unit ? ` (${data.metadata.unit})` : ''}`}
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>{chartTitle}</CardTitle>
+            <CardDescription>{chartDescription}</CardDescription>
+          </div>
+          <button 
+            onClick={handleResetZoom} 
+            className={`p-1 rounded hover:bg-gray-100 ${!isZoomed ? 'text-gray-400 cursor-default' : 'text-gray-700'}`}
+            disabled={!isZoomed}
+          >
+            {isZoomed ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
+          </button>
+        </div>
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={height}>
-          <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+          <LineChart 
+            data={chartData} 
+            margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
+            onMouseUp={(e) => {
+              if (e && e.xAxisMap && e.yAxisMap) {
+                // Only set zoom if actually zoomed in
+                if (e.xAxisMap[0].domain.toString() !== e.xAxisMap[0].niceTicks.toString() ||
+                    e.yAxisMap[0].domain.toString() !== e.yAxisMap[0].niceTicks.toString()) {
+                  setIsZoomed(true);
+                }
+              }
+            }}
+          >
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis 
               dataKey="formattedTime" 
@@ -149,74 +182,62 @@ const TimeSeriesChart = ({
               angle={-45}
               textAnchor="end"
               height={60}
+              domain={zoomDomain?.x || ['auto', 'auto']}
+              allowDataOverflow={isZoomed}
             />
-            <YAxis />
+            <YAxis
+              domain={zoomDomain?.y || ['auto', 'auto']}
+              allowDataOverflow={isZoomed}
+            />
             <Tooltip 
               labelFormatter={(label) => `Time: ${label}`}
               formatter={(value, name) => {
-                if (name === 'value') return [`${value}${data.metadata?.unit ? ` ${data.metadata.unit}` : ''}`, 'Actual'];
-                if (name === 'predicted') return [`${value}${data.metadata?.unit ? ` ${data.metadata.unit}` : ''}`, 'Predicted'];
-                return [value, name];
+                const series = seriesNames.find(series => name === series || name.startsWith(`${series}_`));
+                return [value, series || name];
               }}
             />
             <Legend />
             
-            {/* Actual data line */}
-            <Line 
-              type="monotone" 
-              dataKey="value" 
-              stroke="#3788C7" 
-              strokeWidth={2}
-              dot={(props) => {
-                const { cx, cy, payload } = props;
-                // Highlight anomalies if available
-                if (showAnomalies && payload.isAnomaly) {
-                  return (
-                    <circle 
-                      cx={cx} 
-                      cy={cy} 
-                      r={5} 
-                      fill="red" 
-                      stroke="none" 
-                    />
-                  );
-                }
-                return <circle cx={cx} cy={cy} r={3} fill="#3788C7" stroke="none" />;
-              }}
-              activeDot={{ r: 6 }}
-              isAnimationActive={true}
-              animationDuration={1000}
-            />
-            
-            {/* Prediction line (if available) */}
-            {showPredictions && (
+            {/* Render a line for each series */}
+            {seriesNames.map((seriesName, index) => (
               <Line 
+                key={seriesName}
                 type="monotone" 
-                dataKey="predicted" 
-                stroke="#55A5DA" 
+                dataKey={seriesName} 
+                name={seriesName}
+                stroke={COLORS[index % COLORS.length]} 
                 strokeWidth={2}
-                strokeDasharray={showForecast ? "0" : "0"}
-                dot={(props) => {
-                  // Only show dots for forecast points
-                  const { cx, cy, payload } = props;
-                  if (payload.isForecast) {
-                    return <circle cx={cx} cy={cy} r={3} fill="#55A5DA" stroke="none" />;
-                  }
-                  return null;
-                }}
+                dot={{ r: 3, fill: COLORS[index % COLORS.length], stroke: 'none' }}
+                activeDot={{ r: 6 }}
                 isAnimationActive={true}
                 animationDuration={1000}
               />
-            )}
+            ))}
             
-            {/* Reference lines */}
-            {mean !== undefined && (
+            {/* Render prediction lines if available */}
+            {analysisResult?.type.includes('regression') && seriesNames.map((seriesName, index) => (
+              <Line 
+                key={`${seriesName}_predicted`}
+                type="monotone" 
+                dataKey={`${seriesName}_predicted`}
+                name={`${seriesName} (Predicted)`}
+                stroke={COLORS[index % COLORS.length]}
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                dot={false}
+                isAnimationActive={true}
+                animationDuration={1000}
+              />
+            ))}
+            
+            {/* Reference lines for anomaly detection */}
+            {analysisResult?.type === 'anomaly' && analysisResult.results.mean !== undefined && (
               <ReferenceLine 
-                y={mean} 
+                y={analysisResult.results.mean} 
                 stroke="rgba(102, 102, 102, 0.7)" 
                 strokeDasharray="3 3" 
                 label={{ 
-                  value: `Mean: ${mean.toFixed(2)}`, 
+                  value: `Mean: ${analysisResult.results.mean.toFixed(2)}`, 
                   position: 'insideTopLeft',
                   fill: '#666666',
                   fontSize: 12
@@ -224,13 +245,13 @@ const TimeSeriesChart = ({
               />
             )}
             
-            {threshold !== undefined && (
+            {analysisResult?.type === 'anomaly' && analysisResult.results.threshold !== undefined && (
               <ReferenceLine 
-                y={threshold} 
+                y={analysisResult.results.threshold} 
                 stroke="rgba(255, 99, 71, 0.7)" 
                 strokeDasharray="3 3" 
                 label={{ 
-                  value: `Threshold: ${threshold.toFixed(2)}`, 
+                  value: `Threshold: ${analysisResult.results.threshold.toFixed(2)}`, 
                   position: 'insideBottomLeft',
                   fill: '#FF6347',
                   fontSize: 12

@@ -18,7 +18,7 @@ const AnalysisPage = () => {
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   
   // Get data from location state or redirect if none
-  const data = location.state?.data as TimeSeriesData | undefined;
+  const data = location.state?.data as TimeSeriesData | TimeSeriesData[] | undefined;
   
   if (!data) {
     return (

@@ -64,18 +64,11 @@ const DataPage = () => {
                 <div className="space-y-4">
                   <h2 className="text-xl font-bold">Data Visualization</h2>
                   
-                  {Array.isArray(data) ? (
-                    <div className="grid grid-cols-1 gap-6">
-                      {data.map((series) => (
-                        <TimeSeriesChart 
-                          key={series.id} 
-                          data={series}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <TimeSeriesChart data={data} />
-                  )}
+                  {/* Always render a single chart with all time series */}
+                  <TimeSeriesChart 
+                    data={data} 
+                    height={450}
+                  />
                 </div>
               </div>
             )}

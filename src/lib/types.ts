@@ -1,4 +1,3 @@
-
 // Define our core data types
 export interface DataPoint {
   timestamp: string;
@@ -25,7 +24,7 @@ export interface TimeSeriesData {
 
 export interface AnalysisResult {
   id: string;
-  type: 'descriptive' | 'regression' | 'classification' | 'forecasting' | 'anomaly';
+  type: 'descriptive' | 'regression' | 'classification' | 'forecasting' | 'anomaly' | 'logistic-regression' | 'poisson-regression';
   timeSeriesId: string;
   results: any;
   metrics?: {
@@ -36,12 +35,14 @@ export interface AnalysisResult {
     mse?: number;
     rmse?: number;
     mae?: number;
+    auc?: number;
+    deviance?: number;
     [key: string]: any;
   };
   createdAt: string;
 }
 
-export type AnalysisType = 'descriptive' | 'regression' | 'classification' | 'forecasting' | 'anomaly';
+export type AnalysisType = 'descriptive' | 'regression' | 'classification' | 'forecasting' | 'anomaly' | 'logistic-regression' | 'poisson-regression';
 
 export interface AnalysisOptions {
   type: AnalysisType;

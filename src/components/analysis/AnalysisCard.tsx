@@ -9,11 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnalysisType, TimeSeriesData, AnalysisOptions } from "@/lib/types";
 import { analyzeTimeSeries } from "@/lib/analysisUtils";
-import { BarChart3, LineChart, Layers, Activity, AlertTriangle } from "lucide-react";
+import { BarChart3, LineChart, Layers, Activity, AlertTriangle, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface AnalysisCardProps {
-  data?: TimeSeriesData;
+  data?: TimeSeriesData | TimeSeriesData[];
   onAnalysisComplete: (result: any) => void;
 }
 
@@ -25,8 +25,7 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
     confidenceInterval: 0.95,
     
     // Classification
-    threshold: data ? data.dataPoints.reduce((sum, p) => sum + p.value, 0) / 
-                       (data.dataPoints.length || 1) : 50,
+    threshold: 50,
     
     // Forecasting
     windowSize: 3,
@@ -34,8 +33,27 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
     
     // Anomaly Detection
     zScoreThreshold: 2,
+    
+    // Logistic Regression
+    regularization: 0.1,
+    
+    // Poisson Regression
+    linkFunction: 'log',
   });
   const { toast } = useToast();
+
+  // Initialize threshold based on data if available
+  React.useEffect(() => {
+    if (!data) return;
+    
+    const mainSeries = Array.isArray(data) ? data[0] : data;
+    if (mainSeries && mainSeries.dataPoints.length > 0) {
+      const avgValue = mainSeries.dataPoints.reduce((sum, p) => sum + p.value, 0) / 
+        mainSeries.dataPoints.length;
+      
+      setParameters(prev => ({ ...prev, threshold: avgValue }));
+    }
+  }, [data]);
 
   const handleParameterChange = (key: string, value: any) => {
     setParameters(prev => ({ ...prev, [key]: value }));
@@ -47,7 +65,9 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
         return <BarChart3 className="h-5 w-5 mr-2" />;
       case "regression":
       case "forecasting":
-        return <LineChart className="h-5 w-5 mr-2" />;
+      case "logistic-regression":
+      case "poisson-regression":
+        return <TrendingUp className="h-5 w-5 mr-2" />;
       case "classification":
         return <Layers className="h-5 w-5 mr-2" />;
       case "anomaly":
@@ -62,13 +82,17 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
       case "descriptive":
         return "Descriptive Statistics";
       case "regression":
-        return "Regression Analysis";
+        return "Linear Regression";
       case "classification":
         return "Classification Analysis";
       case "forecasting":
         return "Forecasting Analysis";
       case "anomaly":
         return "Anomaly Detection";
+      case "logistic-regression":
+        return "Logistic Regression";
+      case "poisson-regression":
+        return "Poisson Regression";
       default:
         return "Analysis";
     }
@@ -79,13 +103,17 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
       case "descriptive":
         return "Calculate summary statistics for your data";
       case "regression":
-        return "Perform regression analysis to identify trends";
+        return "Perform linear regression analysis to identify trends";
       case "classification":
         return "Classify data points into categories";
       case "forecasting":
         return "Forecast future values based on historical data";
       case "anomaly":
         return "Detect anomalies and outliers in your data";
+      case "logistic-regression":
+        return "Model binary outcomes with logistic regression";
+      case "poisson-regression":
+        return "Model count data with Poisson regression";
       default:
         return "Analyze your time-series data";
     }
@@ -110,7 +138,9 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
         parameters
       };
       
-      const result = analyzeTimeSeries(data, options);
+      // Use the first series if multiple are provided
+      const targetData = Array.isArray(data) ? data[0] : data;
+      const result = analyzeTimeSeries(targetData, options);
       
       // Pass the result to the parent component
       onAnalysisComplete(result);
@@ -155,7 +185,9 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="descriptive">Descriptive Statistics</SelectItem>
-                <SelectItem value="regression">Regression Analysis</SelectItem>
+                <SelectItem value="regression">Linear Regression</SelectItem>
+                <SelectItem value="logistic-regression">Logistic Regression</SelectItem>
+                <SelectItem value="poisson-regression">Poisson Regression</SelectItem>
                 <SelectItem value="classification">Classification</SelectItem>
                 <SelectItem value="forecasting">Forecasting</SelectItem>
                 <SelectItem value="anomaly">Anomaly Detection</SelectItem>
@@ -174,7 +206,7 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
               </p>
             </TabsContent>
             
-            {/* Regression Analysis Parameters */}
+            {/* Linear Regression Analysis Parameters */}
             <TabsContent value="regression">
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -186,6 +218,67 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
                     step={0.01}
                     onValueChange={(values) => handleParameterChange("confidenceInterval", values[0])}
                   />
+                </div>
+              </div>
+            </TabsContent>
+            
+            {/* Logistic Regression Parameters */}
+            <TabsContent value="logistic-regression">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="regularization">Regularization (L2)</Label>
+                  <Input
+                    id="regularization"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={parameters.regularization}
+                    onChange={(e) => handleParameterChange("regularization", parseFloat(e.target.value))}
+                  />
+                  <p className="text-xs text-gray-400">
+                    Higher values reduce overfitting but may decrease accuracy
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="threshold">Classification Threshold</Label>
+                  <Input
+                    id="threshold"
+                    type="number"
+                    min="0.1"
+                    max="0.9"
+                    step="0.05"
+                    value={parameters.threshold || 0.5}
+                    onChange={(e) => handleParameterChange("threshold", parseFloat(e.target.value))}
+                  />
+                  <p className="text-xs text-gray-400">
+                    Probability threshold for binary classification (default: 0.5)
+                  </p>
+                </div>
+              </div>
+            </TabsContent>
+            
+            {/* Poisson Regression Parameters */}
+            <TabsContent value="poisson-regression">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="linkFunction">Link Function</Label>
+                  <Select
+                    value={parameters.linkFunction}
+                    onValueChange={(value) => handleParameterChange("linkFunction", value)}
+                  >
+                    <SelectTrigger id="linkFunction">
+                      <SelectValue placeholder="Select link function" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="log">Log (default)</SelectItem>
+                      <SelectItem value="identity">Identity</SelectItem>
+                      <SelectItem value="sqrt">Square Root</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-400">
+                    Link function determines how predictors relate to response
+                  </p>
                 </div>
               </div>
             </TabsContent>
