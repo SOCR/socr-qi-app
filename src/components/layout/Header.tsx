@@ -52,7 +52,7 @@ const Header = () => {
             className="flex items-center"
           >
             <img 
-              src="/lovable-uploads/085562a1-f0fd-40e9-857b-4f9b7dfdd9ff.png" 
+              src="/lovable-uploads/182dfcda-d2cf-44f1-98a0-8baaba5025fc.png" 
               alt="SOCR Logo" 
               className="h-8 w-auto mr-2" 
               onError={(e) => {

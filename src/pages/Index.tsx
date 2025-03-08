@@ -1,6 +1,5 @@
-
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import Header from "@/components/layout/Header";
 import PageContainer from "@/components/layout/PageContainer";
 import DataImportCard from "@/components/data/DataImportCard";
@@ -20,9 +19,18 @@ import { TimeSeriesData, AnalysisResult } from "@/lib/types";
 
 const Index = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState("import");
   const [data, setData] = useState<TimeSeriesData | TimeSeriesData[] | null>(null);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
+
+  useEffect(() => {
+    if (location.state?.preserveData) {
+      if (data) {
+        setActiveTab("data");
+      }
+    }
+  }, [location.state, data]);
 
   const handleDataImported = (importedData: TimeSeriesData) => {
     setData(importedData);
@@ -42,7 +50,7 @@ const Index = () => {
   };
 
   const handleNavigateToReports = () => {
-    navigate("/reports", { state: { data, analysisResults } });
+    navigate("/reports", { state: { data, analysisResults, preserveData: true } });
   };
 
   return (
