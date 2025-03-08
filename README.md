@@ -1,8 +1,4 @@
-# Welcome to your Lovable project
-
-## Project info
-
-**URL**: https://lovable.dev/projects/297617c1-f914-42fa-a586-4c10ceffc22b
+# SOCR Quality Improvement (QI) Webapp Project
 
 ## How can I edit this code?
 
