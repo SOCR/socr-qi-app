@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/layout/Header";
 import PageContainer from "@/components/layout/PageContainer";
@@ -17,22 +17,67 @@ import { Badge } from "@/components/ui/badge";
 import { Upload, FileText, BarChart, LineChart, FileBarChart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TimeSeriesData, AnalysisResult } from "@/lib/types";
+import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("import");
   const [data, setData] = useState<TimeSeriesData | TimeSeriesData[] | null>(null);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResult[]>([]);
 
+  // Load data from localStorage on initial render
+  useEffect(() => {
+    const savedData = localStorage.getItem('socrAppData');
+    const savedResults = localStorage.getItem('socrAnalysisResults');
+    
+    if (savedData) {
+      try {
+        const parsedData = JSON.parse(savedData);
+        setData(parsedData);
+        
+        if (parsedData) {
+          toast({
+            title: "Data loaded",
+            description: "Restored previously saved data from browser storage"
+          });
+        }
+      } catch (err) {
+        console.error("Error parsing saved data:", err);
+      }
+    }
+    
+    if (savedResults) {
+      try {
+        const parsedResults = JSON.parse(savedResults);
+        setAnalysisResults(parsedResults);
+      } catch (err) {
+        console.error("Error parsing saved analysis results:", err);
+      }
+    }
+  }, [toast]);
+
+  // Save data to localStorage when it changes
+  useEffect(() => {
+    if (data) {
+      localStorage.setItem('socrAppData', JSON.stringify(data));
+    }
+  }, [data]);
+
+  // Save analysis results to localStorage when they change
+  useEffect(() => {
+    if (analysisResults.length > 0) {
+      localStorage.setItem('socrAnalysisResults', JSON.stringify(analysisResults));
+    }
+  }, [analysisResults]);
+
   const handleDataImported = (importedData: TimeSeriesData) => {
     setData(importedData);
-    setAnalysisResults([]);
     setActiveTab("data");
   };
 
   const handleDataGenerated = (simulatedData: TimeSeriesData[]) => {
     setData(simulatedData);
-    setAnalysisResults([]);
     setActiveTab("data");
   };
 

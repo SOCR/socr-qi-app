@@ -1,5 +1,5 @@
 
-import { TimeSeriesData, AnalysisResult, AnalysisOptions, DataPoint } from "./types";
+import { TimeSeriesData, AnalysisResult, AnalysisOptions, DataPoint, AnalysisType } from "./types";
 import { generateId, sortDataPointsByTime } from "./dataUtils";
 
 // Perform time series analysis based on the specified type
@@ -22,6 +22,10 @@ export const analyzeTimeSeries = (
       return performForecastingAnalysis(data, sortedDataPoints, options.parameters);
     case 'anomaly':
       return performAnomalyDetection(data, sortedDataPoints, options.parameters);
+    case 'logistic':
+      return performLogisticRegression(data, sortedDataPoints, options.parameters);
+    case 'poisson':
+      return performPoissonRegression(data, sortedDataPoints, options.parameters);
     default:
       throw new Error(`Unsupported analysis type: ${options.type}`);
   }
@@ -66,7 +70,7 @@ const performDescriptiveAnalysis = (
   
   return {
     id: generateId(),
-    type: 'descriptive',
+    type: 'descriptive' as AnalysisType,
     timeSeriesId: data.id,
     results: {
       count,
@@ -145,7 +149,7 @@ const performRegressionAnalysis = (
   
   return {
     id: generateId(),
-    type: 'regression',
+    type: 'regression' as AnalysisType,
     timeSeriesId: data.id,
     results: {
       slope,
@@ -215,7 +219,7 @@ const performClassificationAnalysis = (
   
   return {
     id: generateId(),
-    type: 'classification',
+    type: 'classification' as AnalysisType,
     timeSeriesId: data.id,
     results: {
       threshold,
@@ -307,7 +311,7 @@ const performForecastingAnalysis = (
   
   return {
     id: generateId(),
-    type: 'forecasting',
+    type: 'forecasting' as AnalysisType,
     timeSeriesId: data.id,
     results: {
       windowSize,
@@ -360,7 +364,7 @@ const performAnomalyDetection = (
   
   return {
     id: generateId(),
-    type: 'anomaly',
+    type: 'anomaly' as AnalysisType,
     timeSeriesId: data.id,
     results: {
       zScoreThreshold,
@@ -373,6 +377,202 @@ const performAnomalyDetection = (
       (${anomalyPercentage.toFixed(2)}% of data points) using a threshold of ${zScoreThreshold} 
       standard deviations from the mean. The mean value was ${mean.toFixed(2)} with a 
       standard deviation of ${stdDev.toFixed(2)}.`
+    },
+    createdAt: new Date().toISOString()
+  };
+};
+
+// Logistic Regression for binary outcomes
+const performLogisticRegression = (
+  data: TimeSeriesData,
+  sortedDataPoints: DataPoint[],
+  parameters?: Record<string, any>
+): AnalysisResult => {
+  // Get decision threshold (probability cutoff for binary classification)
+  const decisionThreshold = parameters?.decisionThreshold || 0.5;
+  
+  // Convert timestamps to numeric values (milliseconds since epoch)
+  const x = sortedDataPoints.map(point => new Date(point.timestamp).getTime());
+  const y = sortedDataPoints.map(point => point.value);
+  
+  // Normalize x values for numerical stability
+  const xMin = Math.min(...x);
+  const xRange = Math.max(...x) - xMin;
+  const xNorm = x.map(val => (val - xMin) / xRange);
+  
+  // Normalize y values to be between 0 and 1 (probability-like)
+  const yMin = Math.min(...y);
+  const yMax = Math.max(...y);
+  const yNorm = y.map(val => (val - yMin) / (yMax - yMin));
+  
+  // Simple logistic regression (simplified implementation for demo purposes)
+  // In a real implementation, this would use iterative gradient descent or Newton's method
+  // Here we'll just do a linear fit and then apply logistic function
+  
+  // First get linear relationship between x and log-odds
+  const n = x.length;
+  const sumX = xNorm.reduce((a, b) => a + b, 0);
+  const sumY = yNorm.reduce((a, b) => a + b, 0);
+  const sumXY = xNorm.reduce((acc, val, i) => acc + val * yNorm[i], 0);
+  const sumXX = xNorm.reduce((acc, val) => acc + val * val, 0);
+  
+  const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+  
+  // Logistic function: 1 / (1 + e^(-z))
+  const logistic = (z: number) => 1 / (1 + Math.exp(-z));
+  
+  // Generate probability predictions
+  const predictions = xNorm.map(xVal => {
+    const logOdds = intercept + slope * xVal;
+    return logistic(logOdds);
+  });
+  
+  // Convert to binary predictions based on threshold
+  const binaryPredictions = predictions.map(prob => prob >= decisionThreshold ? 1 : 0);
+  
+  // Calculate accuracy (if we have binary ground truth)
+  let accuracy = 0;
+  let truePositives = 0;
+  let falsePositives = 0;
+  let trueNegatives = 0;
+  let falseNegatives = 0;
+  
+  const midpoint = (yMax + yMin) / 2;
+  const actualBinary = y.map(val => val >= midpoint ? 1 : 0);
+  
+  binaryPredictions.forEach((pred, i) => {
+    if (pred === 1 && actualBinary[i] === 1) truePositives++;
+    if (pred === 1 && actualBinary[i] === 0) falsePositives++;
+    if (pred === 0 && actualBinary[i] === 0) trueNegatives++;
+    if (pred === 0 && actualBinary[i] === 1) falseNegatives++;
+  });
+  
+  accuracy = (truePositives + trueNegatives) / n;
+  const precision = truePositives / (truePositives + falsePositives) || 0;
+  const recall = truePositives / (truePositives + falseNegatives) || 0;
+  const f1Score = 2 * (precision * recall) / (precision + recall) || 0;
+  
+  // Create prediction results
+  const logisticResults = sortedDataPoints.map((point, i) => ({
+    timestamp: point.timestamp,
+    actualValue: point.value,
+    probabilityEstimate: predictions[i],
+    predictedClass: binaryPredictions[i] === 1 ? 'High' : 'Low'
+  }));
+  
+  return {
+    id: generateId(),
+    type: 'logistic' as AnalysisType,
+    timeSeriesId: data.id,
+    results: {
+      decisionThreshold,
+      slope,
+      intercept,
+      predictions,
+      binaryPredictions,
+      logisticResults,
+      summary: `Logistic regression with threshold ${decisionThreshold} classifies data 
+      points with ${(accuracy * 100).toFixed(2)}% accuracy. The model estimates the 
+      probability of a 'High' outcome based on time progression.`
+    },
+    metrics: {
+      accuracy,
+      precision,
+      recall,
+      f1Score
+    },
+    createdAt: new Date().toISOString()
+  };
+};
+
+// Poisson Regression for count data
+const performPoissonRegression = (
+  data: TimeSeriesData,
+  sortedDataPoints: DataPoint[],
+  parameters?: Record<string, any>
+): AnalysisResult => {
+  // Get lambda parameter (for Poisson distribution)
+  const poissonLambda = parameters?.poissonLambda || 1.0;
+  
+  // Convert timestamps to numeric values (milliseconds since epoch)
+  const x = sortedDataPoints.map(point => new Date(point.timestamp).getTime());
+  const y = sortedDataPoints.map(point => {
+    // Round values to integers for count data
+    return Math.max(0, Math.round(point.value));
+  });
+  
+  // Normalize x values for numerical stability
+  const xMin = Math.min(...x);
+  const xRange = Math.max(...x) - xMin;
+  const xNorm = x.map(val => (val - xMin) / xRange);
+  
+  // Simple Poisson regression (simplified for demonstration)
+  // In a real implementation, we'd use maximum likelihood estimation
+  
+  // For now, let's fit a linear relationship to the log-transformed data
+  // This is simplistic but demonstrates the concept
+  const n = x.length;
+  const sumX = xNorm.reduce((a, b) => a + b, 0);
+  
+  // We need to avoid log(0), so add a small constant
+  const logY = y.map(val => Math.log(val + 0.01));
+  const sumLogY = logY.reduce((a, b) => a + b, 0);
+  const sumXLogY = xNorm.reduce((acc, val, i) => acc + val * logY[i], 0);
+  const sumXX = xNorm.reduce((acc, val) => acc + val * val, 0);
+  
+  const slope = (n * sumXLogY - sumX * sumLogY) / (n * sumXX - sumX * sumX);
+  const intercept = (sumLogY - slope * sumX) / n;
+  
+  // Generate predictions (expected counts)
+  const predictions = xNorm.map(xVal => {
+    const logMean = intercept + slope * xVal;
+    return Math.exp(logMean);
+  });
+  
+  // Calculate error metrics
+  const errors = y.map((yVal, i) => yVal - predictions[i]);
+  const squaredErrors = errors.map(err => err * err);
+  const mse = squaredErrors.reduce((a, b) => a + b, 0) / n;
+  const rmse = Math.sqrt(mse);
+  
+  // Calculate deviance (a goodness-of-fit measure for Poisson models)
+  // Note: This is a simplified version
+  const deviance = y.reduce((acc, val, i) => {
+    const expected = predictions[i];
+    if (val === 0) return acc;
+    return acc + 2 * (val * Math.log(val / expected) - (val - expected));
+  }, 0);
+  
+  // Create prediction results
+  const poissonResults = sortedDataPoints.map((point, i) => ({
+    timestamp: point.timestamp,
+    actualValue: y[i],
+    predictedValue: predictions[i],
+    error: errors[i]
+  }));
+  
+  // Calculate mean count
+  const meanCount = y.reduce((a, b) => a + b, 0) / n;
+  
+  return {
+    id: generateId(),
+    type: 'poisson' as AnalysisType,
+    timeSeriesId: data.id,
+    results: {
+      slope,
+      intercept,
+      predictions,
+      poissonResults,
+      meanCount,
+      summary: `Poisson regression analysis models count data with a mean rate of 
+      ${meanCount.toFixed(2)} events. The model predicts counts based on time progression, 
+      with RMSE of ${rmse.toFixed(2)}.`
+    },
+    metrics: {
+      mse,
+      rmse,
+      deviance
     },
     createdAt: new Date().toISOString()
   };
