@@ -78,8 +78,8 @@ const DataTable = ({ data }: DataTableProps) => {
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       results = results.filter(point => 
-        point.timestamp.toLowerCase().includes(searchLower) ||
-        point.value.toString().includes(searchLower) ||
+        (point.timestamp && point.timestamp.toLowerCase().includes(searchLower)) ||
+        (typeof point.value === 'number' && point.value.toString().includes(searchLower)) ||
         (point.category && point.category.toLowerCase().includes(searchLower)) ||
         (point.subjectId && point.subjectId.toLowerCase().includes(searchLower)) ||
         (point.seriesId && point.seriesId.toLowerCase().includes(searchLower))
@@ -196,8 +196,8 @@ const DataTable = ({ data }: DataTableProps) => {
               {paginatedData.length > 0 ? (
                 paginatedData.map((point, index) => (
                   <TableRow key={`${point.timestamp}-${point.seriesId || ''}-${index}`}>
-                    <TableCell>{formatDate(point.timestamp)}</TableCell>
-                    <TableCell>{point.value.toFixed(2)}</TableCell>
+                    <TableCell>{point.timestamp ? formatDate(point.timestamp) : '-'}</TableCell>
+                    <TableCell>{typeof point.value === 'number' ? point.value.toFixed(2) : '-'}</TableCell>
                     <TableCell>{point.seriesId || '-'}</TableCell>
                     <TableCell>{point.category || '-'}</TableCell>
                     <TableCell>{point.subjectId || '-'}</TableCell>
