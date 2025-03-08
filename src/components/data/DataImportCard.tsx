@@ -22,11 +22,9 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
   const { toast } = useToast();
   const [importOptions, setImportOptions] = useState<ImportOptions>({
     format: 'wide',
-    timestampColumn: "Timestamp",
+    timestampColumn: "", // Will be auto-detected
     valueColumn: "Value",
-    seriesIdColumn: "SeriesID",
-    categoryColumn: "Category",
-    subjectIdColumn: "SubjectID"
+    seriesIdColumn: "SeriesID"
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,7 +51,7 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
     try {
       const content = await file.text();
       
-      // Parse CSV file with format option
+      // Parse CSV file with auto-detection for wide format
       const data = parseCSVData(content, importOptions);
       
       onDataImported(data);
@@ -120,60 +118,72 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
                   <SelectValue placeholder="Select data format" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="wide">Wide Format (each variable has its own column)</SelectItem>
+                  <SelectItem value="wide">Wide Format (first column is time, others are variables)</SelectItem>
                   <SelectItem value="long">Long Format (time, series ID, value columns)</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="timestampColumn">Timestamp Column</Label>
-                <Input 
-                  id="timestampColumn"
-                  value={importOptions.timestampColumn}
-                  onChange={(e) => handleOptionChange("timestampColumn", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="valueColumn">Value Column</Label>
-                <Input 
-                  id="valueColumn"
-                  value={importOptions.valueColumn}
-                  onChange={(e) => handleOptionChange("valueColumn", e.target.value)}
-                />
-              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {importOptions.format === 'wide' 
+                  ? "Timestamp column will be auto-detected. Each other column will be treated as a separate time series."
+                  : "For long format, please specify column names."}
+              </p>
             </div>
 
             {importOptions.format === 'long' && (
-              <div className="space-y-2">
-                <Label htmlFor="seriesIdColumn">Series ID Column</Label>
-                <Input 
-                  id="seriesIdColumn"
-                  value={importOptions.seriesIdColumn}
-                  onChange={(e) => handleOptionChange("seriesIdColumn", e.target.value)}
-                />
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="timestampColumn">Timestamp Column</Label>
+                    <Input 
+                      id="timestampColumn"
+                      value={importOptions.timestampColumn}
+                      onChange={(e) => handleOptionChange("timestampColumn", e.target.value)}
+                      placeholder="e.g., Date, Time, Timestamp"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="valueColumn">Value Column</Label>
+                    <Input 
+                      id="valueColumn"
+                      value={importOptions.valueColumn}
+                      onChange={(e) => handleOptionChange("valueColumn", e.target.value)}
+                      placeholder="e.g., Value, Measurement"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="seriesIdColumn">Series ID Column</Label>
+                  <Input 
+                    id="seriesIdColumn"
+                    value={importOptions.seriesIdColumn}
+                    onChange={(e) => handleOptionChange("seriesIdColumn", e.target.value)}
+                    placeholder="e.g., Variable, Metric, SeriesID"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="categoryColumn">Category Column (optional)</Label>
+                    <Input 
+                      id="categoryColumn"
+                      value={importOptions.categoryColumn || ""}
+                      onChange={(e) => handleOptionChange("categoryColumn", e.target.value)}
+                      placeholder="e.g., Category, Group"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="subjectIdColumn">Subject ID Column (optional)</Label>
+                    <Input 
+                      id="subjectIdColumn"
+                      value={importOptions.subjectIdColumn || ""}
+                      onChange={(e) => handleOptionChange("subjectIdColumn", e.target.value)}
+                      placeholder="e.g., Subject, Patient"
+                    />
+                  </div>
+                </div>
               </div>
             )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="categoryColumn">Category Column (optional)</Label>
-                <Input 
-                  id="categoryColumn"
-                  value={importOptions.categoryColumn}
-                  onChange={(e) => handleOptionChange("categoryColumn", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="subjectIdColumn">Subject ID Column (optional)</Label>
-                <Input 
-                  id="subjectIdColumn"
-                  value={importOptions.subjectIdColumn}
-                  onChange={(e) => handleOptionChange("subjectIdColumn", e.target.value)}
-                />
-              </div>
-            </div>
           </div>
 
           {error && (

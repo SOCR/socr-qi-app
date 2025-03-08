@@ -1,30 +1,61 @@
-
 import { DataPoint, TimeSeriesData, SimulationOptions, ImportOptions } from "./types";
 
 // Parse CSV data into our TimeSeriesData format
 export const parseCSVData = (csvContent: string, options: ImportOptions): TimeSeriesData => {
-  const lines = csvContent.split('\n');
+  const lines = csvContent.split('\n').filter(line => line.trim());
   const headers = lines[0].split(',').map(h => h.trim());
   
   if (options.format === 'wide') {
-    return parseWideFormatCSV(csvContent, options);
+    return parseWideFormatCSV(csvContent);
   } else {
     return parseLongFormatCSV(csvContent, options);
   }
 };
 
-// Parse wide format CSV (each variable has its own column)
-const parseWideFormatCSV = (csvContent: string, options: ImportOptions): TimeSeriesData => {
-  const lines = csvContent.split('\n');
-  const headers = lines[0].split(',').map(h => h.trim());
+// Detects the most likely timestamp column from headers or first row values
+const detectTimestampColumn = (headers: string[], firstRowValues: string[]): number => {
+  // Common timestamp column names
+  const timeColumnNames = ['time', 'date', 'timestamp', 'datetime', 'period'];
   
-  const timestampIndex = headers.indexOf(options.timestampColumn);
-  
-  if (timestampIndex === -1) {
-    throw new Error(`Timestamp column "${options.timestampColumn}" not found in CSV data`);
+  // Check headers for common timestamp column names
+  for (let i = 0; i < headers.length; i++) {
+    const header = headers[i].toLowerCase();
+    if (timeColumnNames.some(name => header.includes(name))) {
+      return i;
+    }
   }
   
-  // For wide format, we assume column 1 is time and all other columns are time-series values
+  // Check if first column has date-like formats
+  const datePatterns = [
+    /^\d{4}[-/]\d{1,2}[-/]\d{1,2}/, // YYYY-MM-DD
+    /^\d{1,2}[-/]\d{1,2}[-/]\d{4}/, // MM-DD-YYYY or DD-MM-YYYY
+    /^\d{1,2}[-/]\d{1,2}[-/]\d{2}/, // MM-DD-YY or DD-MM-YY
+    /^\d{4}[-/]\d{1,2}[-/]\d{1,2}\s\d{1,2}:\d{1,2}/, // YYYY-MM-DD HH:MM
+    /^\d{1,2}:\d{1,2}/ // HH:MM
+  ];
+
+  for (let i = 0; i < Math.min(headers.length, 3); i++) { // Check first 3 columns
+    const value = firstRowValues[i];
+    if (datePatterns.some(pattern => pattern.test(value))) {
+      return i;
+    }
+  }
+  
+  // Default to first column if no timestamp column is detected
+  return 0;
+};
+
+// Parse wide format CSV with automatic timestamp column detection
+const parseWideFormatCSV = (csvContent: string): TimeSeriesData => {
+  const lines = csvContent.split('\n').filter(line => line.trim());
+  const headers = lines[0].split(',').map(h => h.trim());
+  
+  // Auto-detect timestamp column from first row
+  const firstRowValues = lines[1].split(',').map(v => v.trim());
+  const timestampIndex = detectTimestampColumn(headers, firstRowValues);
+  
+  console.log(`Auto-detected timestamp column: ${headers[timestampIndex]} (index: ${timestampIndex})`);
+  
   const dataPoints: DataPoint[] = [];
   
   // Process each line
@@ -48,27 +79,26 @@ const parseWideFormatCSV = (csvContent: string, options: ImportOptions): TimeSer
         timestamp: timestamp,
         value: value,
         seriesId: seriesId,
-        ...(options.categoryColumn && { category: seriesId }),
-        ...(options.subjectIdColumn && values.length > headers.indexOf(options.subjectIdColumn) && { 
-          subjectId: values[headers.indexOf(options.subjectIdColumn)] 
-        }),
+        category: seriesId, // Use series name as category by default
       });
     }
   }
   
   return {
     id: generateId(),
-    name: `Dataset ${new Date().toISOString()}`,
+    name: `Dataset ${new Date().toISOString().split('T')[0]}`,
     dataPoints: dataPoints,
     metadata: {
-      format: 'wide'
+      format: 'wide',
+      source: 'import',
+      importedAt: new Date().toISOString()
     }
   };
 };
 
 // Parse long format CSV (time, series ID, value)
 const parseLongFormatCSV = (csvContent: string, options: ImportOptions): TimeSeriesData => {
-  const lines = csvContent.split('\n');
+  const lines = csvContent.split('\n').filter(line => line.trim());
   const headers = lines[0].split(',').map(h => h.trim());
   
   const timestampIndex = headers.indexOf(options.timestampColumn);
@@ -78,7 +108,7 @@ const parseLongFormatCSV = (csvContent: string, options: ImportOptions): TimeSer
   const subjectIdIndex = options.subjectIdColumn ? headers.indexOf(options.subjectIdColumn) : -1;
   
   if (timestampIndex === -1 || valueIndex === -1) {
-    throw new Error('Required columns not found in CSV data');
+    throw new Error(`Required columns not found in CSV data. Cannot find '${options.timestampColumn}' or '${options.valueColumn}'`);
   }
   
   const dataPoints: DataPoint[] = [];
@@ -103,10 +133,12 @@ const parseLongFormatCSV = (csvContent: string, options: ImportOptions): TimeSer
   
   return {
     id: generateId(),
-    name: `Dataset ${new Date().toISOString()}`,
+    name: `Dataset ${new Date().toISOString().split('T')[0]}`,
     dataPoints: dataPoints,
     metadata: {
-      format: 'long'
+      format: 'long',
+      source: 'import',
+      importedAt: new Date().toISOString()
     }
   };
 };
