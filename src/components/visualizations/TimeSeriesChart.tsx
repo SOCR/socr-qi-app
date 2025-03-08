@@ -1,13 +1,8 @@
-import React, { useMemo, useState, useRef } from "react";
+import React, { useMemo } from "react";
 import { TimeSeriesData, AnalysisResult } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
-  ResponsiveContainer, ReferenceLine, Brush
-} from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
 import { formatDate } from "@/lib/dataUtils";
-import { Button } from "@/components/ui/button";
-import { ZoomIn as ZoomInIcon, ZoomOut as ZoomOutIcon, RefreshCw } from "lucide-react";
 
 interface TimeSeriesChartProps {
   data: TimeSeriesData;
@@ -17,24 +12,17 @@ interface TimeSeriesChartProps {
   height?: number;
 }
 
+// Define chart data type to avoid TypeScript errors
 interface ChartDataPoint {
   timestamp: number;
   formattedTime: string;
-  [key: string]: any;
+  value: number;
+  category?: string;
+  predicted?: number;
+  isAnomaly?: boolean;
+  zScore?: number;
+  isForecast?: boolean;
 }
-
-const COLORS = [
-  "#8B5CF6",
-  "#F97316",
-  "#0EA5E9",
-  "#10B981",
-  "#EC4899",
-  "#F59E0B",
-  "#6366F1",
-  "#14B8A6",
-  "#EF4444",
-  "#8B5CF6"
-];
 
 const TimeSeriesChart = ({ 
   data, 
@@ -43,267 +31,117 @@ const TimeSeriesChart = ({
   description,
   height = 300
 }: TimeSeriesChartProps) => {
-  const [zoomDomain, setZoomDomain] = useState<{ start: number; end: number } | null>(null);
-  const chartRef = useRef<any>(null);
   
+  // Prepare chart data by combining the original data points with any analysis data
   const chartData = useMemo<ChartDataPoint[]>(() => {
-    if (data.metadata?.format === 'wide') {
-      const seriesIds = new Set<string>();
-      data.dataPoints.forEach(point => {
-        if (point.seriesId) {
-          seriesIds.add(point.seriesId);
-        }
-      });
-      
-      const groupedByTimestamp: { [key: string]: ChartDataPoint } = {};
-      
-      data.dataPoints.forEach(point => {
-        const timestamp = new Date(point.timestamp).getTime();
-        if (!groupedByTimestamp[timestamp]) {
-          groupedByTimestamp[timestamp] = {
-            timestamp,
-            formattedTime: formatDate(point.timestamp)
-          };
-        }
-        
-        if (point.seriesId) {
-          groupedByTimestamp[timestamp][point.seriesId] = point.value;
-        }
-      });
-      
-      const formattedData = Object.values(groupedByTimestamp);
-      formattedData.sort((a, b) => a.timestamp - b.timestamp);
-      
-      return formattedData;
-    } else {
-      const formattedData = data.dataPoints.map(point => {
-        const chartPoint: ChartDataPoint = {
-          timestamp: new Date(point.timestamp).getTime(),
-          formattedTime: formatDate(point.timestamp),
-          value: point.value
-        };
-        
-        if (point.category) chartPoint.category = point.category;
-        if (point.seriesId) chartPoint.seriesId = point.seriesId;
-        
-        return chartPoint;
-      });
-      
-      formattedData.sort((a, b) => a.timestamp - b.timestamp);
-      
-      if (analysisResult) {
-        switch (analysisResult.type) {
-          case 'regression':
-            formattedData.forEach((point, index) => {
-              if (index < analysisResult.results.predictions.length) {
-                point.predicted = analysisResult.results.predictions[index];
-              }
-            });
-            
-            if (analysisResult.results.forecastPoints) {
-              analysisResult.results.forecastPoints.forEach(forecastPoint => {
-                formattedData.push({
-                  timestamp: new Date(forecastPoint.timestamp).getTime(),
-                  formattedTime: formatDate(forecastPoint.timestamp),
-                  value: 0,
-                  predicted: forecastPoint.value,
-                  isForecast: true
-                });
-              });
+    const formattedData = data.dataPoints.map(point => ({
+      timestamp: new Date(point.timestamp).getTime(),
+      formattedTime: formatDate(point.timestamp),
+      value: point.value,
+      category: point.category
+    } as ChartDataPoint));
+    
+    // Sort by timestamp
+    formattedData.sort((a, b) => a.timestamp - b.timestamp);
+    
+    // Add analysis predictions if available
+    if (analysisResult) {
+      switch (analysisResult.type) {
+        case 'regression':
+          formattedData.forEach((point, index) => {
+            if (index < analysisResult.results.predictions.length) {
+              point.predicted = analysisResult.results.predictions[index];
             }
-            break;
-            
-          case 'forecasting':
-            const movingAverages = analysisResult.results.movingAverages;
-            
-            movingAverages.forEach(avgPoint => {
-              const timestamp = new Date(avgPoint.timestamp).getTime();
-              const existingPoint = formattedData.find(p => p.timestamp === timestamp);
-              
-              if (existingPoint) {
-                existingPoint.predicted = avgPoint.predicted;
-              } else if (avgPoint.predicted !== undefined) {
-                formattedData.push({
-                  timestamp,
-                  formattedTime: formatDate(avgPoint.timestamp),
-                  value: 0,
-                  predicted: avgPoint.predicted,
-                  isForecast: true
-                });
-              }
+          });
+          
+          // Add forecast points to the chart data
+          if (analysisResult.results.forecastPoints) {
+            analysisResult.results.forecastPoints.forEach(forecastPoint => {
+              formattedData.push({
+                timestamp: new Date(forecastPoint.timestamp).getTime(),
+                formattedTime: formatDate(forecastPoint.timestamp),
+                value: 0,
+                predicted: forecastPoint.value,
+                isForecast: true
+              } as ChartDataPoint);
             });
-            break;
+          }
+          break;
+          
+        case 'forecasting':
+          const movingAverages = analysisResult.results.movingAverages;
+          
+          // Match predictions with actual data points
+          movingAverages.forEach(avgPoint => {
+            const timestamp = new Date(avgPoint.timestamp).getTime();
+            const existingPoint = formattedData.find(p => p.timestamp === timestamp);
             
-          case 'anomaly':
-            const anomalies = analysisResult.results.anomalies;
-            
-            anomalies.forEach(anomalyPoint => {
-              const timestamp = new Date(anomalyPoint.timestamp).getTime();
-              const existingPoint = formattedData.find(p => p.timestamp === timestamp);
-              
-              if (existingPoint) {
-                existingPoint.isAnomaly = anomalyPoint.isAnomaly;
-                existingPoint.zScore = anomalyPoint.zScore;
-              }
-            });
-            break;
-            
-          case 'logistic':
-          case 'poisson':
-            if (analysisResult.results.predictions) {
-              formattedData.forEach((point, index) => {
-                if (index < analysisResult.results.predictions.length) {
-                  point.predicted = analysisResult.results.predictions[index];
-                }
-              });
+            if (existingPoint) {
+              existingPoint.predicted = avgPoint.predicted;
+            } else if (avgPoint.predicted !== undefined) {
+              // This is a forecast point
+              formattedData.push({
+                timestamp,
+                formattedTime: formatDate(avgPoint.timestamp),
+                value: 0,
+                predicted: avgPoint.predicted,
+                isForecast: true
+              } as ChartDataPoint);
             }
-            break;
-        }
+          });
+          break;
+          
+        case 'anomaly':
+          const anomalies = analysisResult.results.anomalies;
+          
+          anomalies.forEach(anomalyPoint => {
+            const timestamp = new Date(anomalyPoint.timestamp).getTime();
+            const existingPoint = formattedData.find(p => p.timestamp === timestamp);
+            
+            if (existingPoint) {
+              existingPoint.isAnomaly = anomalyPoint.isAnomaly;
+              existingPoint.zScore = anomalyPoint.zScore;
+            }
+          });
+          break;
       }
-      
-      return formattedData;
     }
+    
+    return formattedData;
   }, [data, analysisResult]);
   
-  const seriesKeys = useMemo(() => {
-    if (chartData.length === 0) return [];
-    
-    const firstPoint = chartData[0];
-    return Object.keys(firstPoint).filter(key => 
-      key !== 'timestamp' && key !== 'formattedTime' && 
-      key !== 'category' && key !== 'isAnomaly' && 
-      key !== 'zScore' && key !== 'isForecast'
-    );
-  }, [chartData]);
-  
+  // Determine if we should show anomalies
   const showAnomalies = useMemo(() => {
     return analysisResult?.type === 'anomaly' && 
            chartData.some(point => point.isAnomaly);
   }, [analysisResult, chartData]);
   
+  // Determine if we should show predictions
   const showPredictions = useMemo(() => {
-    return (analysisResult?.type === 'regression' || 
-            analysisResult?.type === 'forecasting' || 
-            analysisResult?.type === 'logistic' || 
-            analysisResult?.type === 'poisson') && 
+    return (analysisResult?.type === 'regression' || analysisResult?.type === 'forecasting') && 
            chartData.some(point => point.predicted !== undefined);
   }, [analysisResult, chartData]);
   
+  // Determine if we should show forecast
   const showForecast = useMemo(() => {
     return chartData.some(point => point.isForecast);
   }, [chartData]);
   
+  // Get the mean and threshold values for reference lines if available
   const mean = analysisResult?.results?.mean;
   const threshold = analysisResult?.results?.threshold;
-
-  const handleZoomIn = () => {
-    if (!chartData.length) return;
-    
-    if (zoomDomain) {
-      const range = zoomDomain.end - zoomDomain.start;
-      const quarter = range / 4;
-      setZoomDomain({
-        start: zoomDomain.start + quarter,
-        end: zoomDomain.end - quarter
-      });
-    } else {
-      const minTime = chartData[0].timestamp;
-      const maxTime = chartData[chartData.length - 1].timestamp;
-      const range = maxTime - minTime;
-      const quarter = range / 4;
-      
-      setZoomDomain({
-        start: minTime + quarter,
-        end: maxTime - quarter
-      });
-    }
-  };
-  
-  const handleZoomOut = () => {
-    if (!chartData.length) return;
-    
-    if (zoomDomain) {
-      const range = zoomDomain.end - zoomDomain.start;
-      const third = range / 3;
-      
-      const minTime = chartData[0].timestamp;
-      const maxTime = chartData[chartData.length - 1].timestamp;
-      
-      const newStart = Math.max(minTime, zoomDomain.start - third);
-      const newEnd = Math.min(maxTime, zoomDomain.end + third);
-      
-      if (newStart === minTime && newEnd === maxTime) {
-        setZoomDomain(null);
-      } else {
-        setZoomDomain({
-          start: newStart,
-          end: newEnd
-        });
-      }
-    }
-  };
-  
-  const resetZoom = () => {
-    setZoomDomain(null);
-  };
-  
-  const handleBrushChange = (domain: any) => {
-    if (domain && domain.startIndex !== undefined && domain.endIndex !== undefined) {
-      const start = chartData[domain.startIndex]?.timestamp;
-      const end = chartData[domain.endIndex]?.timestamp;
-      
-      if (start && end) {
-        setZoomDomain({ start, end });
-      }
-    }
-  };
   
   return (
     <Card className="w-full">
       <CardHeader>
-        <div className="flex justify-between items-center">
-          <div>
-            <CardTitle>{title || data.name}</CardTitle>
-            <CardDescription>
-              {description || `${data.dataPoints.length} data points${data.metadata?.unit ? ` (${data.metadata.unit})` : ''}`}
-            </CardDescription>
-          </div>
-          <div className="flex gap-1">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleZoomIn}
-              title="Zoom In"
-            >
-              <ZoomInIcon className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleZoomOut}
-              title="Zoom Out"
-            >
-              <ZoomOutIcon className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={resetZoom}
-              title="Reset Zoom"
-              disabled={!zoomDomain}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        <CardTitle>{title || data.name}</CardTitle>
+        <CardDescription>
+          {description || `${data.dataPoints.length} data points${data.metadata?.unit ? ` (${data.metadata.unit})` : ''}`}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={height}>
-          <LineChart 
-            data={chartData} 
-            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-            ref={chartRef}
-          >
+          <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis 
               dataKey="formattedTime" 
@@ -311,20 +149,8 @@ const TimeSeriesChart = ({
               angle={-45}
               textAnchor="end"
               height={60}
-              domain={zoomDomain ? [zoomDomain.start, zoomDomain.end] : ['auto', 'auto']}
-              type="number"
-              scale="time"
-              tickFormatter={(timestamp) => {
-                if (typeof timestamp === 'number') {
-                  return formatDate(new Date(timestamp).toISOString());
-                }
-                return timestamp;
-              }}
             />
-            <YAxis 
-              domain={['auto', 'auto']} 
-              allowDataOverflow={true}
-            />
+            <YAxis />
             <Tooltip 
               labelFormatter={(label) => `Time: ${label}`}
               formatter={(value, name) => {
@@ -335,49 +161,34 @@ const TimeSeriesChart = ({
             />
             <Legend />
             
-            <Brush 
-              dataKey="timestamp" 
-              height={30} 
-              stroke="#8884d8"
-              onChange={handleBrushChange}
-              tickFormatter={(timestamp) => {
-                if (typeof timestamp === 'number') {
-                  return formatDate(new Date(timestamp).toISOString());
+            {/* Actual data line */}
+            <Line 
+              type="monotone" 
+              dataKey="value" 
+              stroke="#3788C7" 
+              strokeWidth={2}
+              dot={(props) => {
+                const { cx, cy, payload } = props;
+                // Highlight anomalies if available
+                if (showAnomalies && payload.isAnomaly) {
+                  return (
+                    <circle 
+                      cx={cx} 
+                      cy={cy} 
+                      r={5} 
+                      fill="red" 
+                      stroke="none" 
+                    />
+                  );
                 }
-                return timestamp;
+                return <circle cx={cx} cy={cy} r={3} fill="#3788C7" stroke="none" />;
               }}
+              activeDot={{ r: 6 }}
+              isAnimationActive={true}
+              animationDuration={1000}
             />
             
-            {seriesKeys.map((key, index) => (
-              <Line
-                key={key}
-                type="monotone"
-                dataKey={key}
-                name={key === 'value' ? 'Value' : key}
-                stroke={COLORS[index % COLORS.length]}
-                strokeWidth={2}
-                dot={key === 'value' && showAnomalies ? (props) => {
-                  const { cx, cy, payload } = props;
-                  if (payload.isAnomaly) {
-                    return (
-                      <circle 
-                        cx={cx} 
-                        cy={cy} 
-                        r={5} 
-                        fill="red" 
-                        stroke="none" 
-                      />
-                    );
-                  }
-                  return <circle cx={cx} cy={cy} r={3} fill={COLORS[index % COLORS.length]} stroke="none" />;
-                } : { r: 3 }}
-                activeDot={{ r: 6 }}
-                isAnimationActive={true}
-                animationDuration={1000}
-                connectNulls={true}
-              />
-            ))}
-            
+            {/* Prediction line (if available) */}
             {showPredictions && (
               <Line 
                 type="monotone" 
@@ -386,6 +197,7 @@ const TimeSeriesChart = ({
                 strokeWidth={2}
                 strokeDasharray={showForecast ? "0" : "0"}
                 dot={(props) => {
+                  // Only show dots for forecast points
                   const { cx, cy, payload } = props;
                   if (payload.isForecast) {
                     return <circle cx={cx} cy={cy} r={3} fill="#55A5DA" stroke="none" />;
@@ -394,10 +206,10 @@ const TimeSeriesChart = ({
                 }}
                 isAnimationActive={true}
                 animationDuration={1000}
-                connectNulls={true}
               />
             )}
             
+            {/* Reference lines */}
             {mean !== undefined && (
               <ReferenceLine 
                 y={mean} 

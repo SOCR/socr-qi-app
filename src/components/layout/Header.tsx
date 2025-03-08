@@ -27,10 +27,6 @@ const Header = () => {
   };
 
   const handleResetApp = () => {
-    // Clear localStorage to truly reset the app
-    localStorage.removeItem('socrAppData');
-    localStorage.removeItem('socrAnalysisResults');
-    
     navigate("/", { replace: true });
     toast({
       title: "App Reset",
@@ -56,9 +52,9 @@ const Header = () => {
             className="flex items-center"
           >
             <img 
-              src="/lovable-uploads/e7b84653-e575-4de7-9325-fa33717de61d.png" 
+              src="/lovable-uploads/085562a1-f0fd-40e9-857b-4f9b7dfdd9ff.png" 
               alt="SOCR Logo" 
-              className="h-10 w-auto mr-2" 
+              className="h-8 w-auto mr-2" 
               onError={(e) => {
                 // Fallback to icon if image fails to load
                 e.currentTarget.style.display = 'none';

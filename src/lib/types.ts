@@ -25,7 +25,7 @@ export interface TimeSeriesData {
 
 export interface AnalysisResult {
   id: string;
-  type: AnalysisType;
+  type: 'descriptive' | 'regression' | 'classification' | 'forecasting' | 'anomaly';
   timeSeriesId: string;
   results: any;
   metrics?: {
@@ -41,14 +41,7 @@ export interface AnalysisResult {
   createdAt: string;
 }
 
-export type AnalysisType = 
-  'descriptive' | 
-  'regression' | 
-  'classification' | 
-  'forecasting' | 
-  'anomaly' | 
-  'logistic' | 
-  'poisson';
+export type AnalysisType = 'descriptive' | 'regression' | 'classification' | 'forecasting' | 'anomaly';
 
 export interface AnalysisOptions {
   type: AnalysisType;

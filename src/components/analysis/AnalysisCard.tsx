@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnalysisType, TimeSeriesData, AnalysisOptions } from "@/lib/types";
 import { analyzeTimeSeries } from "@/lib/analysisUtils";
-import { BarChart3, LineChart, Layers, Activity, AlertTriangle, TrendingUp, BarChart, Box } from "lucide-react";
+import { BarChart3, LineChart, Layers, Activity, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface AnalysisCardProps {
@@ -34,12 +34,6 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
     
     // Anomaly Detection
     zScoreThreshold: 2,
-    
-    // Logistic Regression
-    decisionThreshold: 0.5,
-    
-    // Poisson Regression
-    poissonLambda: 1.0,
   });
   const { toast } = useToast();
 
@@ -52,17 +46,12 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
       case "descriptive":
         return <BarChart3 className="h-5 w-5 mr-2" />;
       case "regression":
-        return <TrendingUp className="h-5 w-5 mr-2" />;
       case "forecasting":
         return <LineChart className="h-5 w-5 mr-2" />;
       case "classification":
         return <Layers className="h-5 w-5 mr-2" />;
       case "anomaly":
         return <AlertTriangle className="h-5 w-5 mr-2" />;
-      case "logistic":
-        return <Box className="h-5 w-5 mr-2" />;
-      case "poisson":
-        return <BarChart className="h-5 w-5 mr-2" />;
       default:
         return <Activity className="h-5 w-5 mr-2" />;
     }
@@ -73,17 +62,13 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
       case "descriptive":
         return "Descriptive Statistics";
       case "regression":
-        return "Linear Regression";
+        return "Regression Analysis";
       case "classification":
         return "Classification Analysis";
       case "forecasting":
-        return "Time Series Forecasting";
+        return "Forecasting Analysis";
       case "anomaly":
         return "Anomaly Detection";
-      case "logistic":
-        return "Logistic Regression";
-      case "poisson":
-        return "Poisson Regression";
       default:
         return "Analysis";
     }
@@ -94,17 +79,13 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
       case "descriptive":
         return "Calculate summary statistics for your data";
       case "regression":
-        return "Perform linear regression analysis to identify trends";
+        return "Perform regression analysis to identify trends";
       case "classification":
         return "Classify data points into categories";
       case "forecasting":
         return "Forecast future values based on historical data";
       case "anomaly":
         return "Detect anomalies and outliers in your data";
-      case "logistic":
-        return "Binary outcome prediction for probability estimation";
-      case "poisson":
-        return "Model count data and rare event occurrences";
       default:
         return "Analyze your time-series data";
     }
@@ -174,11 +155,9 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="descriptive">Descriptive Statistics</SelectItem>
-                <SelectItem value="regression">Linear Regression</SelectItem>
-                <SelectItem value="logistic">Logistic Regression</SelectItem>
-                <SelectItem value="poisson">Poisson Regression</SelectItem>
+                <SelectItem value="regression">Regression Analysis</SelectItem>
                 <SelectItem value="classification">Classification</SelectItem>
-                <SelectItem value="forecasting">Time Series Forecasting</SelectItem>
+                <SelectItem value="forecasting">Forecasting</SelectItem>
                 <SelectItem value="anomaly">Anomaly Detection</SelectItem>
               </SelectContent>
             </Select>
@@ -207,46 +186,6 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
                     step={0.01}
                     onValueChange={(values) => handleParameterChange("confidenceInterval", values[0])}
                   />
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Logistic Regression Parameters */}
-            <TabsContent value="logistic">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Decision Threshold: {parameters.decisionThreshold}</Label>
-                  <Slider
-                    value={[parameters.decisionThreshold]}
-                    min={0.1}
-                    max={0.9}
-                    step={0.05}
-                    onValueChange={(values) => handleParameterChange("decisionThreshold", values[0])}
-                  />
-                  <p className="text-xs text-gray-400">
-                    Probability threshold for binary classification decisions
-                  </p>
-                </div>
-              </div>
-            </TabsContent>
-
-            {/* Poisson Regression Parameters */}
-            <TabsContent value="poisson">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="poissonLambda">Lambda Value</Label>
-                  <Input
-                    id="poissonLambda"
-                    type="number"
-                    min="0.1"
-                    max="10"
-                    step="0.1"
-                    value={parameters.poissonLambda}
-                    onChange={(e) => handleParameterChange("poissonLambda", parseFloat(e.target.value))}
-                  />
-                  <p className="text-xs text-gray-400">
-                    Initial lambda parameter for the Poisson distribution
-                  </p>
                 </div>
               </div>
             </TabsContent>

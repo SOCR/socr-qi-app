@@ -15,151 +15,94 @@ interface DataTableProps {
 }
 
 const DataTable = ({ data }: DataTableProps) => {
-  const [wideFormatData, setWideFormatData] = useState<{
-    headers: string[];
-    rows: { [key: string]: any }[];
-  }>({ headers: [], rows: [] });
+  const [flattenedData, setFlattenedData] = useState<DataPoint[]>([]);
+  const [filteredData, setFilteredData] = useState<DataPoint[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
-  const [filteredData, setFilteredData] = useState<{ [key: string]: any }[]>([]);
+  const [selectedSeries, setSelectedSeries] = useState<string>('all');
+  const [series, setSeries] = useState<string[]>([]);
   
-  // Convert data to wide format for display
+  // Flatten the data for display
   useEffect(() => {
-    if (!data) return;
-    
-    let headers: string[] = ['Timestamp'];
-    let rows: { [key: string]: any }[] = [];
+    let allDataPoints: DataPoint[] = [];
+    let seriesIds: Set<string> = new Set(['all']);
     
     if (Array.isArray(data)) {
-      // Multiple time series datasets
-      // Create one column for each dataset
-      headers = ['Timestamp', ...data.map(d => d.name || d.id)];
-      
-      // Group all data points by timestamp
-      const groupedByTimestamp: { [key: string]: { [series: string]: any } } = {};
-      
-      data.forEach((series, seriesIndex) => {
+      // Multiple time series
+      data.forEach((series, index) => {
+        const seriesId = series.id || `series-${index}`;
+        seriesIds.add(seriesId);
+        
         series.dataPoints.forEach(point => {
-          const timestamp = point.timestamp;
-          if (!groupedByTimestamp[timestamp]) {
-            groupedByTimestamp[timestamp] = { Timestamp: formatDate(timestamp) };
-          }
-          const seriesName = series.name || series.id;
-          groupedByTimestamp[timestamp][seriesName] = point.value;
+          allDataPoints.push({
+            ...point,
+            seriesId: point.seriesId || seriesId
+          });
         });
       });
-      
-      // Convert to array and sort by timestamp
-      rows = Object.values(groupedByTimestamp);
-      rows.sort((a, b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
-    } else {
-      // Single time series dataset
-      if (data.metadata?.format === 'wide') {
-        // For wide format, extract unique series IDs
-        const seriesIds = new Set<string>();
-        
+    } else if (data) {
+      // Single time series
+      if (data.metadata?.format === 'long') {
+        // Long format data with series IDs
+        const seriesGroups = groupBySeriesId(data);
+        Object.keys(seriesGroups).forEach(id => {
+          seriesIds.add(id);
+        });
+        allDataPoints = data.dataPoints;
+      } else {
+        // Wide format data
         data.dataPoints.forEach(point => {
           if (point.seriesId) {
             seriesIds.add(point.seriesId);
           }
+          allDataPoints.push(point);
         });
-        
-        // Set headers
-        headers = ['Timestamp', ...Array.from(seriesIds)];
-        
-        // Group data points by timestamp
-        const groupedByTimestamp: { [key: string]: { [series: string]: any } } = {};
-        
-        data.dataPoints.forEach(point => {
-          const timestamp = point.timestamp;
-          if (!groupedByTimestamp[timestamp]) {
-            groupedByTimestamp[timestamp] = { Timestamp: formatDate(timestamp) };
-          }
-          if (point.seriesId) {
-            groupedByTimestamp[timestamp][point.seriesId] = point.value;
-          }
-        });
-        
-        // Convert to array and sort by timestamp
-        rows = Object.values(groupedByTimestamp);
-        rows.sort((a, b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
-      } else {
-        // For long format, create one row per timestamp
-        headers = ['Timestamp', 'Value'];
-        
-        if (data.dataPoints.some(p => p.category)) {
-          headers.push('Category');
-        }
-        
-        if (data.dataPoints.some(p => p.subjectId)) {
-          headers.push('Subject ID');
-        }
-        
-        rows = data.dataPoints.map(point => {
-          const row: { [key: string]: any } = {
-            Timestamp: formatDate(point.timestamp),
-            Value: point.value
-          };
-          
-          if (point.category) {
-            row.Category = point.category;
-          }
-          
-          if (point.subjectId) {
-            row['Subject ID'] = point.subjectId;
-          }
-          
-          return row;
-        });
-        
-        // Sort by timestamp
-        rows.sort((a, b) => new Date(a.Timestamp).getTime() - new Date(b.Timestamp).getTime());
       }
     }
     
-    setWideFormatData({ headers, rows });
+    setFlattenedData(allDataPoints);
+    setSeries(Array.from(seriesIds));
   }, [data]);
   
-  // Filter data based on search term
+  // Filter and paginate data
   useEffect(() => {
-    if (!wideFormatData.rows.length) {
-      setFilteredData([]);
-      return;
+    let results = [...flattenedData];
+    
+    // Filter by series
+    if (selectedSeries !== 'all') {
+      results = results.filter(point => point.seriesId === selectedSeries);
     }
     
-    if (!searchTerm) {
-      setFilteredData(wideFormatData.rows);
-      return;
+    // Filter by search term
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      results = results.filter(point => 
+        (point.timestamp && point.timestamp.toLowerCase().includes(searchLower)) ||
+        (typeof point.value === 'number' && point.value.toString().includes(searchLower)) ||
+        (point.category && point.category.toLowerCase().includes(searchLower)) ||
+        (point.subjectId && point.subjectId.toLowerCase().includes(searchLower)) ||
+        (point.seriesId && point.seriesId.toLowerCase().includes(searchLower))
+      );
     }
     
-    const searchLower = searchTerm.toLowerCase();
-    const filtered = wideFormatData.rows.filter(row => {
-      return Object.values(row).some(value => {
-        if (value === null || value === undefined) return false;
-        return String(value).toLowerCase().includes(searchLower);
-      });
-    });
-    
-    setFilteredData(filtered);
+    setFilteredData(results);
     setCurrentPage(1); // Reset to first page when filters change
-  }, [wideFormatData, searchTerm]);
+  }, [flattenedData, searchTerm, selectedSeries]);
   
   // Download data as CSV
   const handleDownload = () => {
-    const { headers, rows } = wideFormatData;
+    const headers = ['Timestamp', 'Value', 'SeriesID', 'Category', 'SubjectID'];
     
     const csvContent = [
       headers.join(','),
-      ...filteredData.map(row => 
-        headers.map(header => {
-          const value = row[header];
-          // Handle commas in data by quoting
-          if (value === null || value === undefined) return '';
-          const str = String(value);
-          return str.includes(',') ? `"${str}"` : str;
-        }).join(',')
-      )
+      ...filteredData.map(point => [
+        point.timestamp,
+        point.value,
+        point.seriesId || '',
+        point.category || '',
+        point.subjectId || ''
+      ].join(','))
     ].join('\n');
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -204,6 +147,21 @@ const DataTable = ({ data }: DataTableProps) => {
           </div>
           <div className="w-full md:w-48">
             <Select
+              value={selectedSeries}
+              onValueChange={setSelectedSeries}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select series" />
+              </SelectTrigger>
+              <SelectContent>
+                {series.map((s) => (
+                  <SelectItem key={s} value={s}>{s === 'all' ? 'All Series' : s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-full md:w-48">
+            <Select
               value={pageSize.toString()}
               onValueChange={(value) => setPageSize(parseInt(value))}
             >
@@ -223,33 +181,31 @@ const DataTable = ({ data }: DataTableProps) => {
           </Button>
         </div>
         
-        <div className="rounded-md border overflow-x-auto">
+        <div className="rounded-md border">
           <Table>
             <TableHeader>
               <TableRow>
-                {wideFormatData.headers.map((header) => (
-                  <TableHead key={header}>{header}</TableHead>
-                ))}
+                <TableHead>Timestamp</TableHead>
+                <TableHead>Value</TableHead>
+                <TableHead>Series ID</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Subject ID</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {paginatedData.length > 0 ? (
-                paginatedData.map((row, rowIndex) => (
-                  <TableRow key={rowIndex}>
-                    {wideFormatData.headers.map((header) => (
-                      <TableCell key={`${rowIndex}-${header}`}>
-                        {row[header] !== undefined && row[header] !== null
-                          ? typeof row[header] === 'number'
-                            ? row[header].toFixed(2)
-                            : row[header]
-                          : '-'}
-                      </TableCell>
-                    ))}
+                paginatedData.map((point, index) => (
+                  <TableRow key={`${point.timestamp}-${point.seriesId || ''}-${index}`}>
+                    <TableCell>{point.timestamp ? formatDate(point.timestamp) : '-'}</TableCell>
+                    <TableCell>{typeof point.value === 'number' ? point.value.toFixed(2) : '-'}</TableCell>
+                    <TableCell>{point.seriesId || '-'}</TableCell>
+                    <TableCell>{point.category || '-'}</TableCell>
+                    <TableCell>{point.subjectId || '-'}</TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={wideFormatData.headers.length} className="text-center py-4">
+                  <TableCell colSpan={5} className="text-center py-4">
                     No data found
                   </TableCell>
                 </TableRow>

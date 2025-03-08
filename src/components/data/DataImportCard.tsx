@@ -21,9 +21,7 @@ const DataImportCard = ({ onDataImported }: DataImportCardProps) => {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const [importOptions, setImportOptions] = useState<ImportOptions>({
-    format: 'wide',
-    timestampColumn: '',  // Default empty, will be auto-detected
-    valueColumn: ''       // Default empty, will be auto-detected
+    format: 'wide'
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
