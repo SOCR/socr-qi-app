@@ -6,8 +6,8 @@ import {
   ResponsiveContainer, ReferenceLine, Brush
 } from "recharts";
 import { formatDate } from "@/lib/dataUtils";
-import { Maximize, Minimize, ZoomIn } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import ChartTooltip from "./ChartTooltip";
+import ChartControls from "./ChartControls";
 
 interface TimeSeriesChartProps {
   data: TimeSeriesData | TimeSeriesData[];
@@ -33,7 +33,7 @@ const COLORS = [
   "#D946EF", // Fuchsia
 ];
 
-// Define chart data type to avoid TypeScript errors
+// Define chart data type
 interface ChartDataPoint {
   timestamp: number;
   formattedTime: string;
@@ -88,7 +88,7 @@ const TimeSeriesChart = ({
         // Add the value for this series at this timestamp
         existingPoint[seriesKey] = point.value;
         
-        // If we have analysis results for this series, add predictions/anomalies
+        // Handle analysis results (predictions, anomalies)
         if (analysisResult && 
             (analysisResult.timeSeriesId === series.id || 
              (analysisResult.targetSeries && analysisResult.targetSeries === seriesKey))) {
@@ -190,6 +190,9 @@ const TimeSeriesChart = ({
     }`;
   }, [description, data, seriesKeys]);
   
+  // Only show reference lines for the target series in analysis
+  const showReferenceLines = analysisResult?.type === 'anomaly' && analysisResult.results.mean !== undefined;
+  
   return (
     <Card className="w-full">
       <CardHeader>
@@ -198,17 +201,7 @@ const TimeSeriesChart = ({
             <CardTitle>{chartTitle}</CardTitle>
             <CardDescription>{chartDescription}</CardDescription>
           </div>
-          {isZoomed && (
-            <Button 
-              variant="outline"
-              size="sm"
-              onClick={handleResetZoom}
-              className="flex items-center gap-1"
-            >
-              <Maximize className="h-4 w-4" />
-              <span>Reset Zoom</span>
-            </Button>
-          )}
+          <ChartControls isZoomed={isZoomed} onResetZoom={handleResetZoom} />
         </div>
       </CardHeader>
       <CardContent>
@@ -240,17 +233,8 @@ const TimeSeriesChart = ({
               allowDataOverflow={isZoomed}
             />
             <Tooltip 
+              content={<ChartTooltip />}
               labelFormatter={(label) => `Time: ${label}`}
-              formatter={(value, name) => {
-                // Check if name is a string before applying string methods
-                const seriesName = typeof name === 'string' ? 
-                  (name.includes('_predicted') ? 
-                    name.split('_predicted')[0] + ' (Predicted)' : 
-                    name
-                  ) : 
-                  name;
-                return [value, seriesName];
-              }}
             />
             <Legend />
             
@@ -296,8 +280,8 @@ const TimeSeriesChart = ({
               ))
             }
             
-            {/* Reference lines for anomaly detection */}
-            {analysisResult?.type === 'anomaly' && analysisResult.results.mean !== undefined && (
+            {/* Reference lines for anomaly detection - only show for target series */}
+            {showReferenceLines && (
               <ReferenceLine 
                 y={analysisResult.results.mean} 
                 stroke="rgba(102, 102, 102, 0.7)" 
@@ -311,7 +295,7 @@ const TimeSeriesChart = ({
               />
             )}
             
-            {analysisResult?.type === 'anomaly' && analysisResult.results.threshold !== undefined && (
+            {showReferenceLines && analysisResult.results.threshold !== undefined && (
               <ReferenceLine 
                 y={analysisResult.results.threshold} 
                 stroke="rgba(255, 99, 71, 0.7)" 

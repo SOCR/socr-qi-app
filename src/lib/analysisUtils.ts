@@ -1,30 +1,59 @@
 import { TimeSeriesData, AnalysisResult, AnalysisOptions, DataPoint } from "./types";
 import { generateId, sortDataPointsByTime } from "./dataUtils";
+import { 
+  extractSeriesData, 
+  combineSeriesForAnalysis, 
+  filterValidAnalysisPoints 
+} from "./seriesUtils";
 
 // Perform time series analysis based on the specified type
 export const analyzeTimeSeries = (
   data: TimeSeriesData,
   options: AnalysisOptions
 ): AnalysisResult => {
+  // Get the target series ID
+  const targetSeriesId = options.parameters?.targetSeries || null;
+  
+  // For methods that need series selection, ensure we have a target series
+  if (['regression', 'logistic-regression', 'poisson-regression'].includes(options.type) && !targetSeriesId) {
+    throw new Error(`A target series must be selected for ${options.type} analysis`);
+  }
+  
+  // Extract the appropriate data points based on the analysis type
+  let analysisDataPoints: DataPoint[];
+  
+  if (targetSeriesId) {
+    // Analysis of a specific series
+    analysisDataPoints = extractSeriesData(data, targetSeriesId);
+    
+    // If no data points found for this series, throw error
+    if (analysisDataPoints.length === 0) {
+      throw new Error(`No data points found for series "${targetSeriesId}"`);
+    }
+  } else {
+    // Analysis of the entire dataset
+    analysisDataPoints = [...data.dataPoints];
+  }
+  
   // Ensure data points are sorted by time
-  const sortedDataPoints = sortDataPointsByTime(data.dataPoints);
+  const sortedDataPoints = sortDataPointsByTime(analysisDataPoints);
   
   // Select the appropriate analysis method based on the requested type
   switch (options.type) {
     case 'descriptive':
-      return performDescriptiveAnalysis(data, sortedDataPoints);
+      return performDescriptiveAnalysis(data, sortedDataPoints, targetSeriesId);
     case 'regression':
-      return performRegressionAnalysis(data, sortedDataPoints, options.parameters);
+      return performRegressionAnalysis(data, options.parameters);
     case 'logistic-regression':
-      return performLogisticRegression(data, sortedDataPoints, options.parameters);
+      return performLogisticRegression(data, options.parameters);
     case 'poisson-regression':
-      return performPoissonRegression(data, sortedDataPoints, options.parameters);
+      return performPoissonRegression(data, options.parameters);
     case 'classification':
-      return performClassificationAnalysis(data, sortedDataPoints, options.parameters);
+      return performClassificationAnalysis(data, sortedDataPoints, options.parameters, targetSeriesId);
     case 'forecasting':
-      return performForecastingAnalysis(data, sortedDataPoints, options.parameters);
+      return performForecastingAnalysis(data, sortedDataPoints, options.parameters, targetSeriesId);
     case 'anomaly':
-      return performAnomalyDetection(data, sortedDataPoints, options.parameters);
+      return performAnomalyDetection(data, sortedDataPoints, options.parameters, targetSeriesId);
     default:
       throw new Error(`Unsupported analysis type: ${options.type}`);
   }
@@ -33,7 +62,8 @@ export const analyzeTimeSeries = (
 // Basic descriptive statistics
 const performDescriptiveAnalysis = (
   data: TimeSeriesData,
-  sortedDataPoints: DataPoint[]
+  sortedDataPoints: DataPoint[],
+  targetSeriesId: string | null = null
 ): AnalysisResult => {
   const values = sortedDataPoints.map(point => point.value);
   
@@ -71,6 +101,7 @@ const performDescriptiveAnalysis = (
     id: generateId(),
     type: 'descriptive',
     timeSeriesId: data.id,
+    targetSeries: targetSeriesId,
     results: {
       count,
       mean,
@@ -83,7 +114,7 @@ const performDescriptiveAnalysis = (
       q3,
       iqr,
       trend,
-      summary: `Dataset contains ${count} points with mean value of ${mean.toFixed(2)}. 
+      summary: `Dataset ${targetSeriesId ? `(Series: ${targetSeriesId})` : ''} contains ${count} points with mean value of ${mean.toFixed(2)}. 
       Values range from ${min.toFixed(2)} to ${max.toFixed(2)} with a standard deviation 
       of ${stdDev.toFixed(2)}. Overall trend shows a ${trend > 0 ? 'positive' : 'negative'} 
       change of ${Math.abs(trend).toFixed(2)}%.`
@@ -95,71 +126,110 @@ const performDescriptiveAnalysis = (
 // Simple linear regression for trend analysis
 const performRegressionAnalysis = (
   data: TimeSeriesData,
-  sortedDataPoints: DataPoint[],
   parameters?: Record<string, any>
 ): AnalysisResult => {
-  // Convert timestamps to numeric values (milliseconds since epoch)
-  const x = sortedDataPoints.map(point => new Date(point.timestamp).getTime());
-  const y = sortedDataPoints.map(point => point.value);
+  // Extract parameters
+  const targetSeriesId = parameters?.targetSeries;
+  const predictorSeriesIds = parameters?.predictorSeries || [];
   
-  // Normalize x values for numerical stability
-  const xMin = Math.min(...x);
-  const xRange = Math.max(...x) - xMin;
-  const xNorm = x.map(val => (val - xMin) / xRange);
+  if (!targetSeriesId || predictorSeriesIds.length === 0) {
+    throw new Error("Regression requires a target series and at least one predictor series");
+  }
   
-  // Calculate linear regression using least squares method
-  const n = x.length;
-  const sumX = xNorm.reduce((a, b) => a + b, 0);
-  const sumY = y.reduce((a, b) => a + b, 0);
-  const sumXY = xNorm.reduce((acc, val, i) => acc + val * y[i], 0);
-  const sumXX = xNorm.reduce((acc, val) => acc + val * val, 0);
+  // Get valid timestamps (where all series have values)
+  const validSeriesIds = [targetSeriesId, ...predictorSeriesIds];
+  const validTimestamps = filterValidAnalysisPoints(data, validSeriesIds);
   
-  const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-  const intercept = (sumY - slope * sumX) / n;
+  if (validTimestamps.length < 2) {
+    throw new Error("Insufficient data points with values for all selected series");
+  }
+  
+  // Extract data for analysis
+  const { timestamps, targetValues, predictorValues } = combineSeriesForAnalysis(
+    data, targetSeriesId, predictorSeriesIds
+  );
+  
+  // Normalize predictor values for numerical stability
+  const normalizedPredictors = predictorValues.map(series => {
+    const min = Math.min(...series);
+    const range = Math.max(...series) - min;
+    return series.map(val => range > 0 ? (val - min) / range : 0);
+  });
+  
+  // Implement simple multiple linear regression
+  const n = targetValues.length;
+  
+  // For simplicity with multiple predictors, we'll use matrix math approximation
+  // This is a simplified approach that works well for small datasets
+  
+  // Calculate means
+  const meanY = targetValues.reduce((a, b) => a + b, 0) / n;
+  const meanXs = normalizedPredictors.map(series => 
+    series.reduce((a, b) => a + b, 0) / n
+  );
+  
+  // Calculate coefficients using simplified approach
+  const coefficients = new Array(predictorSeriesIds.length).fill(0);
+  
+  // Simple approach: calculate each coefficient separately
+  for (let i = 0; i < predictorSeriesIds.length; i++) {
+    const x = normalizedPredictors[i];
+    let numerator = 0;
+    let denominator = 0;
+    
+    for (let j = 0; j < n; j++) {
+      numerator += (x[j] - meanXs[i]) * (targetValues[j] - meanY);
+      denominator += Math.pow(x[j] - meanXs[i], 2);
+    }
+    
+    coefficients[i] = denominator !== 0 ? numerator / denominator : 0;
+  }
+  
+  // Calculate intercept
+  let intercept = meanY;
+  for (let i = 0; i < coefficients.length; i++) {
+    intercept -= coefficients[i] * meanXs[i];
+  }
   
   // Generate predictions
-  const predictions = xNorm.map(xVal => intercept + slope * xVal);
+  const predictions = new Array(n).fill(0).map((_, i) => {
+    let predicted = intercept;
+    for (let j = 0; j < coefficients.length; j++) {
+      predicted += coefficients[j] * normalizedPredictors[j][i];
+    }
+    return predicted;
+  });
   
   // Calculate error metrics
-  const errors = y.map((yVal, i) => yVal - predictions[i]);
+  const errors = targetValues.map((yVal, i) => yVal - predictions[i]);
   const squaredErrors = errors.map(err => err * err);
   const mse = squaredErrors.reduce((a, b) => a + b, 0) / n;
   const rmse = Math.sqrt(mse);
   
-  // Calculate R-squared (coefficient of determination)
-  const yMean = sumY / n;
-  const totalSumOfSquares = y.reduce((acc, val) => acc + Math.pow(val - yMean, 2), 0);
+  // Calculate R-squared
+  const totalSumOfSquares = targetValues.reduce((acc, val) => 
+    acc + Math.pow(val - meanY, 2), 0);
   const rSquared = 1 - (squaredErrors.reduce((a, b) => a + b, 0) / totalSumOfSquares);
-  
-  // Create forecast for future points
-  const forecastPoints: DataPoint[] = [];
-  const lastDataPointTime = new Date(sortedDataPoints[sortedDataPoints.length - 1].timestamp).getTime();
-  
-  for (let i = 1; i <= 10; i++) {
-    const futureTime = lastDataPointTime + i * (24 * 60 * 60 * 1000); // Add 1 day each time
-    const normalizedX = (futureTime - xMin) / xRange;
-    const predictedValue = intercept + slope * normalizedX;
-    
-    forecastPoints.push({
-      timestamp: new Date(futureTime).toISOString(),
-      value: predictedValue
-    });
-  }
   
   return {
     id: generateId(),
     type: 'regression',
     timeSeriesId: data.id,
+    targetSeries: targetSeriesId,
+    predictorSeries: predictorSeriesIds,
     results: {
-      slope,
+      coefficients: coefficients.map((coef, i) => ({
+        series: predictorSeriesIds[i],
+        coefficient: coef
+      })),
       intercept,
       predictions,
-      forecastPoints,
+      timestamps,
       rSquared,
-      summary: `Linear regression shows a ${slope > 0 ? 'positive' : 'negative'} trend with 
-      a slope of ${slope.toFixed(4)}. The model explains ${(rSquared * 100).toFixed(2)}% of 
-      the variance in the data. Based on this trend, we forecast a 
-      ${slope > 0 ? 'continued increase' : 'continued decrease'} in values.`
+      summary: `Linear regression predicting ${targetSeriesId} using ${predictorSeriesIds.length} predictor series. 
+      The model explains ${(rSquared * 100).toFixed(2)}% of the variance in the data.
+      ${predictorSeriesIds.map((series, i) => 
+        `${series}: coefficient = ${coefficients[i].toFixed(4)}`).join(', ')}`
     },
     metrics: {
       mse,
@@ -174,7 +244,8 @@ const performRegressionAnalysis = (
 const performClassificationAnalysis = (
   data: TimeSeriesData,
   sortedDataPoints: DataPoint[],
-  parameters?: Record<string, any>
+  parameters?: Record<string, any>,
+  targetSeriesId: string | null = null
 ): AnalysisResult => {
   // Use a threshold-based approach by default, or take from parameters
   const threshold = parameters?.threshold || 
@@ -220,10 +291,11 @@ const performClassificationAnalysis = (
     id: generateId(),
     type: 'classification',
     timeSeriesId: data.id,
+    targetSeries: targetSeriesId,
     results: {
       threshold,
       classifications,
-      summary: `Classification analysis using a threshold of ${threshold.toFixed(2)} separates 
+      summary: `Classification analysis ${targetSeriesId ? `for series ${targetSeriesId}` : ''} using a threshold of ${threshold.toFixed(2)} separates 
       data points into High/Low categories. ${accuracy > 0 ? 
       `The model achieved ${(accuracy * 100).toFixed(2)}% accuracy.` : 
       'No ground truth categories were available to evaluate accuracy.'}`
@@ -242,7 +314,8 @@ const performClassificationAnalysis = (
 const performForecastingAnalysis = (
   data: TimeSeriesData,
   sortedDataPoints: DataPoint[],
-  parameters?: Record<string, any>
+  parameters?: Record<string, any>,
+  targetSeriesId: string | null = null
 ): AnalysisResult => {
   // Use window size from parameters or default to 3
   const windowSize = parameters?.windowSize || 3;
@@ -312,12 +385,13 @@ const performForecastingAnalysis = (
     id: generateId(),
     type: 'forecasting',
     timeSeriesId: data.id,
+    targetSeries: targetSeriesId,
     results: {
       windowSize,
       forecastHorizon,
       movingAverages,
       forecast: movingAverages.slice(-forecastHorizon),
-      summary: `Forecasting analysis using a ${windowSize}-point moving average 
+      summary: `Forecasting analysis ${targetSeriesId ? `for series ${targetSeriesId}` : ''} using a ${windowSize}-point moving average 
       predicts values for the next ${forecastHorizon} time periods. The model 
       achieved a mean absolute error of ${mae.toFixed(2)}.`
     },
@@ -334,7 +408,8 @@ const performForecastingAnalysis = (
 const performAnomalyDetection = (
   data: TimeSeriesData,
   sortedDataPoints: DataPoint[],
-  parameters?: Record<string, any>
+  parameters?: Record<string, any>,
+  targetSeriesId: string | null = null
 ): AnalysisResult => {
   // Use threshold from parameters or default to 2 (standard deviations)
   const zScoreThreshold = parameters?.zScoreThreshold || 2;
@@ -365,6 +440,7 @@ const performAnomalyDetection = (
     id: generateId(),
     type: 'anomaly',
     timeSeriesId: data.id,
+    targetSeries: targetSeriesId,
     results: {
       zScoreThreshold,
       mean,
@@ -372,7 +448,8 @@ const performAnomalyDetection = (
       anomalies,
       anomalyCount,
       anomalyPercentage,
-      summary: `Anomaly detection using Z-score identified ${anomalyCount} anomalies 
+      threshold: mean + (zScoreThreshold * stdDev), // Upper threshold
+      summary: `Anomaly detection ${targetSeriesId ? `for series ${targetSeriesId}` : ''} using Z-score identified ${anomalyCount} anomalies 
       (${anomalyPercentage.toFixed(2)}% of data points) using a threshold of ${zScoreThreshold} 
       standard deviations from the mean. The mean value was ${mean.toFixed(2)} with a 
       standard deviation of ${stdDev.toFixed(2)}.`
@@ -384,7 +461,6 @@ const performAnomalyDetection = (
 // Logistic regression for binary outcomes
 const performLogisticRegression = (
   data: TimeSeriesData,
-  sortedDataPoints: DataPoint[],
   parameters?: Record<string, any>
 ): AnalysisResult => {
   // Extract parameters
@@ -392,8 +468,8 @@ const performLogisticRegression = (
   const threshold = parameters?.threshold || 0.5;
   
   // Convert timestamps to numeric values (milliseconds since epoch)
-  const x = sortedDataPoints.map(point => new Date(point.timestamp).getTime());
-  const y = sortedDataPoints.map(point => point.value);
+  const x = data.dataPoints.map(point => new Date(point.timestamp).getTime());
+  const y = data.dataPoints.map(point => point.value);
   
   // Normalize x values for numerical stability
   const xMin = Math.min(...x);
@@ -524,15 +600,14 @@ const performLogisticRegression = (
 // Poisson regression for count data
 const performPoissonRegression = (
   data: TimeSeriesData,
-  sortedDataPoints: DataPoint[],
   parameters?: Record<string, any>
 ): AnalysisResult => {
   // Extract parameters
   const linkFunction = parameters?.linkFunction || 'log';
   
   // Convert timestamps to numeric values (milliseconds since epoch)
-  const x = sortedDataPoints.map(point => new Date(point.timestamp).getTime());
-  const y = sortedDataPoints.map(point => Math.max(0, point.value)); // Ensure all values are non-negative
+  const x = data.dataPoints.map(point => new Date(point.timestamp).getTime());
+  const y = data.dataPoints.map(point => Math.max(0, point.value)); // Ensure all values are non-negative
   
   // Normalize x values for numerical stability
   const xMin = Math.min(...x);

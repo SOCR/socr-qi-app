@@ -3,7 +3,7 @@ import React from "react";
 import { TimeSeriesData } from "@/lib/types";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { groupBySeriesId } from "@/lib/dataUtils";
 
 interface SeriesSelectorProps {
@@ -51,19 +51,18 @@ const SeriesSelector = ({
     onSeriesSelect(newSelectedSeries);
   };
 
-  const handleTargetChange = (seriesId: string) => {
-    onTargetSelect(seriesId);
-  };
-
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Series Selection</CardTitle>
+        <CardDescription>
+          Select which series to use for analysis
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
           <Label className="text-sm font-semibold">Target Series (to predict)</Label>
-          <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-2">
+          <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-2 border rounded-md p-2">
             {allSeriesIds.map((seriesId) => (
               <div key={`target-${seriesId}`} className="flex items-center space-x-2">
                 <input
@@ -72,8 +71,8 @@ const SeriesSelector = ({
                   name="targetSeries"
                   value={seriesId}
                   checked={targetSeries === seriesId}
-                  onChange={() => handleTargetChange(seriesId)}
-                  className="h-4 w-4 text-primary"
+                  onChange={() => onTargetSelect(seriesId)}
+                  className="h-4 w-4 text-primary cursor-pointer"
                 />
                 <Label
                   htmlFor={`target-${seriesId}`}
@@ -88,7 +87,7 @@ const SeriesSelector = ({
 
         <div className="space-y-2">
           <Label className="text-sm font-semibold">Predictor Series (features)</Label>
-          <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-2">
+          <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto pr-2 border rounded-md p-2">
             {allSeriesIds
               .filter((id) => id !== targetSeries)
               .map((seriesId) => (
@@ -98,6 +97,7 @@ const SeriesSelector = ({
                     checked={selectedSeries.includes(seriesId)}
                     onCheckedChange={() => handleSeriesToggle(seriesId)}
                     disabled={targetSeries === seriesId}
+                    className="cursor-pointer"
                   />
                   <Label
                     htmlFor={`predictor-${seriesId}`}
