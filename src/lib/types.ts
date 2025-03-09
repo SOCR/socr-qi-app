@@ -28,6 +28,8 @@ export interface AnalysisResult {
   type: 'descriptive' | 'regression' | 'classification' | 'forecasting' | 'anomaly' | 'logistic-regression' | 'poisson-regression';
   timeSeriesId: string;
   results: any;
+  targetSeries?: string;
+  predictorSeries?: string[];
   metrics?: {
     accuracy?: number;
     precision?: number;
@@ -47,7 +49,11 @@ export type AnalysisType = 'descriptive' | 'regression' | 'classification' | 'fo
 
 export interface AnalysisOptions {
   type: AnalysisType;
-  parameters?: Record<string, any>;
+  parameters?: {
+    targetSeries?: string | null;
+    predictorSeries?: string[];
+    [key: string]: any;
+  };
 }
 
 export interface SimulationOptions {

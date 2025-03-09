@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +10,7 @@ import { AnalysisType, TimeSeriesData, AnalysisOptions } from "@/lib/types";
 import { analyzeTimeSeries } from "@/lib/analysisUtils";
 import { BarChart3, LineChart, Layers, Activity, AlertTriangle, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import SeriesSelector from "./SeriesSelector";
 
 interface AnalysisCardProps {
   data?: TimeSeriesData | TimeSeriesData[];
@@ -20,6 +20,8 @@ interface AnalysisCardProps {
 const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
   const [analysisType, setAnalysisType] = useState<AnalysisType>("descriptive");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [selectedSeries, setSelectedSeries] = useState<string[]>([]);
+  const [targetSeries, setTargetSeries] = useState<string | null>(null);
   const [parameters, setParameters] = useState<Record<string, any>>({
     // Regression
     confidenceInterval: 0.95,
@@ -52,6 +54,32 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
         mainSeries.dataPoints.length;
       
       setParameters(prev => ({ ...prev, threshold: avgValue }));
+    }
+    
+    // Auto-select the first series as target if available
+    if (mainSeries) {
+      // Find all unique series IDs
+      const seriesIds = new Set<string>();
+      
+      if (mainSeries.metadata?.format === 'wide' || mainSeries.dataPoints.some(p => p.seriesId)) {
+        mainSeries.dataPoints.forEach(point => {
+          if (point.seriesId) {
+            seriesIds.add(point.seriesId);
+          }
+        });
+      } else {
+        seriesIds.add(mainSeries.name || 'Series 1');
+      }
+      
+      const seriesArray = Array.from(seriesIds);
+      if (seriesArray.length > 0) {
+        setTargetSeries(seriesArray[0]);
+        
+        // Auto-select other series as predictors if there are more than one
+        if (seriesArray.length > 1) {
+          setSelectedSeries(seriesArray.slice(1));
+        }
+      }
     }
   }, [data]);
 
@@ -119,11 +147,35 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
     }
   };
 
+  const needsMultipleSeries = () => {
+    return ['regression', 'logistic-regression', 'poisson-regression'].includes(analysisType);
+  };
+
   const handleAnalyze = async () => {
     if (!data) {
       toast({
         title: "No data available",
         description: "Please import or generate data first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if a target series is selected when needed
+    if (needsMultipleSeries() && !targetSeries) {
+      toast({
+        title: "No target series selected",
+        description: "Please select a target series to predict",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // For regression, we need at least one predictor
+    if (needsMultipleSeries() && selectedSeries.length === 0) {
+      toast({
+        title: "No predictor series selected",
+        description: "Please select at least one predictor series",
         variant: "destructive",
       });
       return;
@@ -135,7 +187,11 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
       // Perform analysis
       const options: AnalysisOptions = {
         type: analysisType,
-        parameters
+        parameters: {
+          ...parameters,
+          targetSeries,
+          predictorSeries: selectedSeries
+        }
       };
       
       // Use the first series if multiple are provided
@@ -194,6 +250,17 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
               </SelectContent>
             </Select>
           </div>
+          
+          {/* Series Selector */}
+          {needsMultipleSeries() && data && (
+            <SeriesSelector
+              data={data}
+              selectedSeries={selectedSeries}
+              targetSeries={targetSeries}
+              onSeriesSelect={setSelectedSeries}
+              onTargetSelect={setTargetSeries}
+            />
+          )}
           
           <Tabs value={analysisType} className="w-full">
             {/* Descriptive Statistics Parameters */}

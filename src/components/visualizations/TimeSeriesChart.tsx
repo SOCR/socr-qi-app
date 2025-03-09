@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useCallback } from "react";
 import { TimeSeriesData, AnalysisResult } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,8 +57,7 @@ const TimeSeriesChart = ({
     
     // Process each time series
     allSeries.forEach((series, seriesIndex) => {
-      const seriesName = series.name || `Series ${seriesIndex + 1}`;
-      
+      // For each data point, organize by timestamp
       series.dataPoints.forEach(point => {
         const timestamp = new Date(point.timestamp).getTime();
         
@@ -70,20 +68,37 @@ const TimeSeriesChart = ({
           });
         }
         
-        // Add the value for this series at this timestamp
+        // Get existing point at this timestamp
         const existingPoint = timeMap.get(timestamp)!;
-        // Use seriesId if available (for wide format), otherwise use the series name
-        const seriesKey = point.seriesId || seriesName;
+        
+        // Determine the series key to use
+        let seriesKey: string;
+        
+        if (point.seriesId) {
+          // If the point has a seriesId, use that (for wide format)
+          seriesKey = point.seriesId;
+        } else if (series.name) {
+          // If the series has a name, use that
+          seriesKey = series.name;
+        } else {
+          // Otherwise, generate a default name
+          seriesKey = `Series ${seriesIndex + 1}`;
+        }
+        
+        // Add the value for this series at this timestamp
         existingPoint[seriesKey] = point.value;
         
         // If we have analysis results for this series, add predictions/anomalies
-        if (analysisResult && analysisResult.timeSeriesId === series.id) {
+        if (analysisResult && 
+            (analysisResult.timeSeriesId === series.id || 
+             (analysisResult.targetSeries && analysisResult.targetSeries === seriesKey))) {
+          
           switch (analysisResult.type) {
             case 'regression':
             case 'logistic-regression':
             case 'poisson-regression':
               // Add predicted values if available in analysis results
-              const prediction = analysisResult.results.predictions?.[seriesIndex];
+              const prediction = analysisResult.results.predictions?.[timeMap.size - 1];
               if (prediction !== undefined) {
                 existingPoint[`${seriesKey}_predicted`] = prediction;
               }
@@ -264,20 +279,22 @@ const TimeSeriesChart = ({
             ))}
             
             {/* Render prediction lines if available */}
-            {analysisResult?.type.includes('regression') && seriesKeys.map((seriesKey, index) => (
-              <Line 
-                key={`${seriesKey}_predicted`}
-                type="monotone" 
-                dataKey={`${seriesKey}_predicted`}
-                name={`${seriesKey} (Predicted)`}
-                stroke={COLORS[index % COLORS.length]}
-                strokeWidth={2}
-                strokeDasharray="5 5"
-                dot={false}
-                isAnimationActive={true}
-                animationDuration={1000}
-              />
-            ))}
+            {analysisResult?.type.includes('regression') && 
+              (analysisResult.targetSeries ? [analysisResult.targetSeries] : seriesKeys).map((seriesKey, index) => (
+                <Line 
+                  key={`${seriesKey}_predicted`}
+                  type="monotone" 
+                  dataKey={`${seriesKey}_predicted`}
+                  name={`${seriesKey} (Predicted)`}
+                  stroke={COLORS[index % COLORS.length]}
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={false}
+                  isAnimationActive={true}
+                  animationDuration={1000}
+                />
+              ))
+            }
             
             {/* Reference lines for anomaly detection */}
             {analysisResult?.type === 'anomaly' && analysisResult.results.mean !== undefined && (

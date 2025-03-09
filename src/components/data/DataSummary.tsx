@@ -14,7 +14,7 @@ const DataSummary = ({ data }: DataSummaryProps) => {
   const dataArray = Array.isArray(data) ? data : [data];
   
   // Calculate summary statistics
-  const totalSeries = dataArray.length;
+  const totalSeries = calculateTotalSeries(dataArray);
   const totalDataPoints = dataArray.reduce((sum, series) => sum + series.dataPoints.length, 0);
   
   // Find date range
@@ -97,6 +97,41 @@ const DataSummary = ({ data }: DataSummaryProps) => {
       </CardContent>
     </Card>
   );
+};
+
+// Helper function to calculate total series, accounting for wide format
+const calculateTotalSeries = (dataArray: TimeSeriesData[]): number => {
+  let count = 0;
+  
+  dataArray.forEach(series => {
+    if (series.metadata?.format === 'wide') {
+      // For wide format, count unique seriesId values
+      const uniqueSeriesIds = new Set<string>();
+      series.dataPoints.forEach(point => {
+        if (point.seriesId) {
+          uniqueSeriesIds.add(point.seriesId);
+        }
+      });
+      count += uniqueSeriesIds.size || 1;
+    } else {
+      // For single time series or long format
+      if (series.dataPoints.length > 0) {
+        const uniqueSeriesIds = new Set<string>();
+        series.dataPoints.forEach(point => {
+          if (point.seriesId) {
+            uniqueSeriesIds.add(point.seriesId);
+          }
+        });
+        
+        // If seriesIds are present, count unique ones, otherwise count as 1 series
+        count += uniqueSeriesIds.size || 1;
+      } else {
+        count += 1; // Count empty series as 1
+      }
+    }
+  });
+  
+  return count > 0 ? count : dataArray.length;
 };
 
 export default DataSummary;
