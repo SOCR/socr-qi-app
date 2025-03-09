@@ -1,9 +1,10 @@
-import React, { useMemo, useState, useCallback } from "react";
+
+import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { TimeSeriesData, AnalysisResult } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
-  ResponsiveContainer, ReferenceLine, Brush
+  ResponsiveContainer, ReferenceLine, Brush, Scatter, ReferenceArea
 } from "recharts";
 import { formatDate } from "@/lib/dataUtils";
 import ChartTooltip from "./ChartTooltip";
@@ -49,11 +50,17 @@ const TimeSeriesChart = ({
 }: TimeSeriesChartProps) => {
   const [zoomDomain, setZoomDomain] = useState<null | { x: [number, number], y: [number, number] }>(null);
   const [isZoomed, setIsZoomed] = useState(false);
+  const chartRef = useRef<any>(null);
   
   // Prepare chart data by combining all time series data points
-  const chartData = useMemo<ChartDataPoint[]>(() => {
+  const { chartData, seriesKeys, targetSeriesKey, anomalyData } = useMemo(() => {
     const timeMap = new Map<number, ChartDataPoint>();
     const allSeries = Array.isArray(data) ? data : [data];
+    const seriesSet = new Set<string>();
+    
+    // Find target series key from analysis result
+    const targetSeriesKey = analysisResult?.targetSeries || null;
+    let anomalyData: any[] = [];
     
     // Process each time series
     allSeries.forEach((series, seriesIndex) => {
@@ -85,78 +92,157 @@ const TimeSeriesChart = ({
           seriesKey = `Series ${seriesIndex + 1}`;
         }
         
+        // Add the series key to the set
+        seriesSet.add(seriesKey);
+        
         // Add the value for this series at this timestamp
         existingPoint[seriesKey] = point.value;
-        
-        // Handle analysis results (predictions, anomalies)
-        if (analysisResult && 
-            (analysisResult.timeSeriesId === series.id || 
-             (analysisResult.targetSeries && analysisResult.targetSeries === seriesKey))) {
-          
-          switch (analysisResult.type) {
-            case 'regression':
-            case 'logistic-regression':
-            case 'poisson-regression':
-              // Add predicted values if available in analysis results
-              const prediction = analysisResult.results.predictions?.[timeMap.size - 1];
-              if (prediction !== undefined) {
-                existingPoint[`${seriesKey}_predicted`] = prediction;
-              }
-              break;
-              
-            case 'anomaly':
-              // Mark anomalies if available
-              const anomalyInfo = analysisResult.results.anomalies?.find(
-                (a: any) => new Date(a.timestamp).getTime() === timestamp
-              );
-              if (anomalyInfo?.isAnomaly) {
-                existingPoint[`${seriesKey}_anomaly`] = point.value;
-                existingPoint[`${seriesKey}_zScore`] = anomalyInfo.zScore;
-              }
-              break;
-          }
-        }
       });
     });
     
-    // Convert map to array and sort by timestamp
-    const formattedData = Array.from(timeMap.values());
-    return formattedData.sort((a, b) => a.timestamp - b.timestamp);
-  }, [data, analysisResult]);
-  
-  // Get all unique series names/keys by examining the data points
-  const seriesKeys = useMemo(() => {
-    const keys = new Set<string>();
-    
-    // Collect all series keys from data points
-    if (Array.isArray(data)) {
-      data.forEach(series => {
-        series.dataPoints.forEach(point => {
-          if (point.seriesId) {
-            keys.add(point.seriesId);
-          } else {
-            keys.add(series.name || `Series ${data.indexOf(series) + 1}`);
+    // Handle analysis results (predictions, anomalies, classifications)
+    if (analysisResult) {
+      switch (analysisResult.type) {
+        case 'forecasting':
+          if (analysisResult.results.forecast) {
+            // Add forecast points after the actual data
+            analysisResult.results.forecast.forEach((forecastPoint: any) => {
+              const timestamp = new Date(forecastPoint.timestamp).getTime();
+              
+              if (!timeMap.has(timestamp)) {
+                timeMap.set(timestamp, {
+                  timestamp,
+                  formattedTime: formatDate(forecastPoint.timestamp),
+                });
+              }
+              
+              const existingPoint = timeMap.get(timestamp)!;
+              
+              // Use the target series name for forecast if available
+              const forecastKey = `${targetSeriesKey || 'Forecast'}_predicted`;
+              existingPoint[forecastKey] = forecastPoint.predicted;
+              
+              // Add the forecast key to the set
+              seriesSet.add(forecastKey);
+            });
           }
-        });
-      });
-    } else if (data) {
-      data.dataPoints.forEach(point => {
-        if (point.seriesId) {
-          keys.add(point.seriesId);
-        } else {
-          keys.add(data.name || 'Series 1');
-        }
-      });
+          break;
+          
+        case 'regression':
+        case 'logistic-regression':
+        case 'poisson-regression':
+          if (analysisResult.results.predictions) {
+            // Get the target series key
+            const targetKey = targetSeriesKey || 'Target';
+            const predictedKey = `${targetKey}_predicted`;
+            
+            // Add prediction to each data point
+            analysisResult.results.predictions.forEach((pred: number, idx: number) => {
+              const timestamp = analysisResult.results.timestamps?.[idx];
+              if (timestamp && timeMap.has(new Date(timestamp).getTime())) {
+                const point = timeMap.get(new Date(timestamp).getTime())!;
+                point[predictedKey] = pred;
+                seriesSet.add(predictedKey);
+              }
+            });
+          }
+          break;
+          
+        case 'classification':
+          if (analysisResult.results.classifications) {
+            // Get the target series key
+            const targetKey = targetSeriesKey || 'Target';
+            
+            // Add classification labels
+            analysisResult.results.classifications.forEach((cls: any) => {
+              const timestamp = new Date(cls.timestamp).getTime();
+              if (timeMap.has(timestamp)) {
+                const point = timeMap.get(timestamp)!;
+                point[`${targetKey}_class`] = cls.predictedClass === 'High Risk' ? 1 : 0;
+              }
+            });
+            
+            // Add classification series to set
+            seriesSet.add(`${targetKey}_class`);
+          }
+          break;
+          
+        case 'anomaly':
+          if (analysisResult.results.anomalies) {
+            // Get anomalies array for special scatter plot
+            anomalyData = analysisResult.results.anomalies
+              .filter((a: any) => a.isAnomaly)
+              .map((a: any) => ({
+                timestamp: new Date(a.timestamp).getTime(),
+                formattedTime: formatDate(a.timestamp),
+                value: a.value,
+                zScore: a.zScore
+              }));
+            
+            // Add upper and lower control limits
+            if (analysisResult.results.upperControlLimit !== undefined && 
+                analysisResult.results.lowerControlLimit !== undefined) {
+              timeMap.forEach((point) => {
+                point['UCL'] = analysisResult.results.upperControlLimit;
+                point['LCL'] = analysisResult.results.lowerControlLimit;
+              });
+              
+              // Add control limit series to set
+              seriesSet.add('UCL');
+              seriesSet.add('LCL');
+            }
+          }
+          break;
+      }
     }
     
-    return Array.from(keys);
-  }, [data]);
+    // Convert map to array and sort by timestamp
+    const formattedData = Array.from(timeMap.values());
+    
+    return {
+      chartData: formattedData.sort((a, b) => a.timestamp - b.timestamp),
+      seriesKeys: Array.from(seriesSet),
+      targetSeriesKey,
+      anomalyData
+    };
+  }, [data, analysisResult]);
   
   // Handle zoom reset
   const handleResetZoom = useCallback(() => {
     setZoomDomain(null);
     setIsZoomed(false);
   }, []);
+  
+  // Handle zoom in/out
+  const handleZoomIn = useCallback(() => {
+    if (chartData.length > 10) {
+      const midPoint = Math.floor(chartData.length / 2);
+      const startIndex = Math.max(0, midPoint - 5);
+      const endIndex = Math.min(chartData.length - 1, midPoint + 5);
+      
+      setZoomDomain({
+        x: [chartData[startIndex].timestamp, chartData[endIndex].timestamp],
+        y: ['auto', 'auto'] as [number, number]
+      });
+      setIsZoomed(true);
+    }
+  }, [chartData]);
+  
+  const handleZoomOut = useCallback(() => {
+    if (isZoomed) {
+      const currentDomain = zoomDomain?.x;
+      if (currentDomain) {
+        const currentRange = currentDomain[1] - currentDomain[0];
+        const newStart = Math.max(chartData[0].timestamp, currentDomain[0] - currentRange/2);
+        const newEnd = Math.min(chartData[chartData.length-1].timestamp, currentDomain[1] + currentRange/2);
+        
+        setZoomDomain({
+          x: [newStart, newEnd],
+          y: ['auto', 'auto'] as [number, number]
+        });
+      }
+    }
+  }, [isZoomed, zoomDomain, chartData]);
   
   // Handle brush change (time window selection)
   const handleBrushChange = useCallback((domain: any) => {
@@ -185,13 +271,287 @@ const TimeSeriesChart = ({
       0
     );
     
-    return `${totalPoints} data points across ${seriesKeys.length} series${
-      allSeries[0]?.metadata?.unit ? ` (${allSeries[0].metadata.unit})` : ''
-    }`;
-  }, [description, data, seriesKeys]);
+    let desc = `${totalPoints} data points across ${seriesKeys.length} series`;
+    
+    // Add analysis type information
+    if (analysisResult) {
+      desc += ` - ${analysisResult.type.charAt(0).toUpperCase() + analysisResult.type.slice(1)} Analysis`;
+      
+      if (analysisResult.targetSeries) {
+        desc += ` for ${analysisResult.targetSeries}`;
+      }
+    }
+    
+    return desc;
+  }, [description, data, seriesKeys, analysisResult]);
   
-  // Only show reference lines for the target series in analysis
-  const showReferenceLines = analysisResult?.type === 'anomaly' && analysisResult.results.mean !== undefined;
+  // Determine domain for X axis - include forecast points beyond observed data
+  const xDomain = useMemo(() => {
+    if (chartData.length === 0) return ['auto', 'auto'];
+    
+    let minTime = chartData[0].timestamp;
+    let maxTime = chartData[chartData.length - 1].timestamp;
+    
+    // Override with zoom domain if set
+    if (zoomDomain && isZoomed) {
+      return zoomDomain.x;
+    }
+    
+    return [minTime, maxTime];
+  }, [chartData, zoomDomain, isZoomed]);
+  
+  // Get Y domain with room for control limits if needed
+  const yDomain = useMemo(() => {
+    if (chartData.length === 0) return ['auto', 'auto'];
+    
+    let minValue = Number.MAX_VALUE;
+    let maxValue = Number.MIN_VALUE;
+    
+    // Find min and max across all series
+    chartData.forEach(point => {
+      seriesKeys.forEach(key => {
+        if (point[key] !== undefined) {
+          minValue = Math.min(minValue, point[key]);
+          maxValue = Math.max(maxValue, point[key]);
+        }
+      });
+    });
+    
+    // Check control limits for anomaly detection
+    if (analysisResult?.type === 'anomaly') {
+      if (analysisResult.results.upperControlLimit !== undefined) {
+        maxValue = Math.max(maxValue, analysisResult.results.upperControlLimit);
+      }
+      if (analysisResult.results.lowerControlLimit !== undefined) {
+        minValue = Math.min(minValue, analysisResult.results.lowerControlLimit);
+      }
+    }
+    
+    // Add padding
+    const padding = (maxValue - minValue) * 0.1;
+    minValue = Math.max(0, minValue - padding); // Don't go below 0 unless data does
+    maxValue = maxValue + padding;
+    
+    // Override with zoom domain if set
+    if (zoomDomain && isZoomed && zoomDomain.y[0] !== 'auto') {
+      return zoomDomain.y;
+    }
+    
+    return [minValue, maxValue];
+  }, [chartData, seriesKeys, analysisResult, zoomDomain, isZoomed]);
+  
+  // Render lines based on analysis type
+  const renderLines = () => {
+    // Split series that should have normal lines vs specialized displays
+    const regularSeries = seriesKeys.filter(key => 
+      !key.includes('_predicted') && 
+      !key.includes('_class') && 
+      key !== 'UCL' && 
+      key !== 'LCL'
+    );
+    
+    // Render main data series
+    const mainLines = regularSeries.map((seriesKey, index) => (
+      <Line 
+        key={seriesKey}
+        type="monotone" 
+        dataKey={seriesKey} 
+        name={seriesKey}
+        stroke={COLORS[index % COLORS.length]} 
+        strokeWidth={2}
+        dot={{ r: 3, fill: COLORS[index % COLORS.length], stroke: 'none' }}
+        activeDot={{ r: 6 }}
+        isAnimationActive={true}
+        animationDuration={1000}
+      />
+    ));
+    
+    // Render prediction/forecast lines if available
+    const predictionLines = seriesKeys
+      .filter(key => key.includes('_predicted'))
+      .map((predKey, index) => {
+        const baseKey = predKey.replace('_predicted', '');
+        const baseIndex = regularSeries.indexOf(baseKey);
+        const colorIndex = baseIndex >= 0 ? baseIndex : index;
+        
+        return (
+          <Line 
+            key={predKey}
+            type="monotone" 
+            dataKey={predKey}
+            name={`${baseKey} (Predicted)`}
+            stroke={COLORS[colorIndex % COLORS.length]}
+            strokeWidth={2}
+            strokeDasharray="5 5"
+            dot={false}
+            isAnimationActive={true}
+            animationDuration={1000}
+          />
+        );
+      });
+    
+    // Render classification indicators if available
+    const classLines = seriesKeys
+      .filter(key => key.includes('_class'))
+      .map((classKey, index) => {
+        const baseKey = classKey.replace('_class', '');
+        const baseIndex = regularSeries.indexOf(baseKey);
+        const colorIndex = baseIndex >= 0 ? baseIndex : index;
+        
+        return (
+          <Line 
+            key={classKey}
+            type="stepAfter" 
+            dataKey={classKey}
+            name={`${baseKey} (Classification)`}
+            stroke={COLORS[colorIndex % COLORS.length]}
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            dot={false}
+            isAnimationActive={true}
+            animationDuration={1000}
+          />
+        );
+      });
+    
+    // Render control limit lines for anomaly detection
+    const controlLines = [];
+    
+    if (seriesKeys.includes('UCL')) {
+      controlLines.push(
+        <Line 
+          key="UCL"
+          type="monotone" 
+          dataKey="UCL"
+          name="Upper Control Limit"
+          stroke="#FF0000"
+          strokeWidth={1.5}
+          strokeDasharray="3 3"
+          dot={false}
+          isAnimationActive={true}
+          animationDuration={1000}
+        />
+      );
+    }
+    
+    if (seriesKeys.includes('LCL')) {
+      controlLines.push(
+        <Line 
+          key="LCL"
+          type="monotone" 
+          dataKey="LCL"
+          name="Lower Control Limit"
+          stroke="#FF0000"
+          strokeWidth={1.5}
+          strokeDasharray="3 3"
+          dot={false}
+          isAnimationActive={true}
+          animationDuration={1000}
+        />
+      );
+    }
+    
+    // Combine all lines
+    return [...mainLines, ...predictionLines, ...classLines, ...controlLines];
+  };
+  
+  // Render anomaly points for anomaly detection
+  const renderAnomalyPoints = () => {
+    if (analysisResult?.type !== 'anomaly' || anomalyData.length === 0) {
+      return null;
+    }
+    
+    // Find the target series key
+    const targetKey = targetSeriesKey || seriesKeys.find(k => !k.includes('_') && k !== 'UCL' && k !== 'LCL') || '';
+    
+    return (
+      <Scatter
+        name="Anomalies"
+        data={anomalyData}
+        fill="#FF0000"
+        line={false}
+        shape={(props: any) => {
+          const { cx, cy } = props;
+          return (
+            <circle
+              cx={cx}
+              cy={cy}
+              r={6}
+              fill="none"
+              stroke="#FF0000"
+              strokeWidth={2}
+            />
+          );
+        }}
+      />
+    );
+  };
+  
+  // Render reference lines if needed
+  const renderReferenceLines = () => {
+    if (!analysisResult) return null;
+    
+    const referenceLines = [];
+    
+    if (analysisResult.type === 'anomaly') {
+      // Mean reference line
+      if (analysisResult.results.mean !== undefined) {
+        referenceLines.push(
+          <ReferenceLine 
+            key="mean"
+            y={analysisResult.results.mean} 
+            stroke="rgba(102, 102, 102, 0.7)" 
+            strokeDasharray="3 3" 
+            label={{ 
+              value: `Mean: ${analysisResult.results.mean.toFixed(2)}`, 
+              position: 'insideTopLeft',
+              fill: '#666666',
+              fontSize: 12
+            }} 
+          />
+        );
+      }
+    } else if (analysisResult.type === 'classification') {
+      // Threshold reference line
+      if (analysisResult.results.threshold !== undefined) {
+        referenceLines.push(
+          <ReferenceLine 
+            key="threshold"
+            y={analysisResult.results.threshold} 
+            stroke="rgba(102, 102, 102, 0.7)" 
+            strokeDasharray="3 3" 
+            label={{ 
+              value: `Threshold: ${analysisResult.results.threshold.toFixed(2)}`, 
+              position: 'insideTopLeft',
+              fill: '#666666',
+              fontSize: 12
+            }} 
+          />
+        );
+      }
+    }
+    
+    return referenceLines;
+  };
+  
+  // Render reference area if needed (for control limits)
+  const renderReferenceAreas = () => {
+    if (analysisResult?.type !== 'anomaly') return null;
+    
+    if (analysisResult.results.upperControlLimit !== undefined && 
+        analysisResult.results.lowerControlLimit !== undefined) {
+      return (
+        <ReferenceArea
+          y1={analysisResult.results.lowerControlLimit}
+          y2={analysisResult.results.upperControlLimit}
+          fill="rgba(173, 216, 230, 0.15)"
+          fillOpacity={0.3}
+        />
+      );
+    }
+    
+    return null;
+  };
   
   return (
     <Card className="w-full">
@@ -201,7 +561,12 @@ const TimeSeriesChart = ({
             <CardTitle>{chartTitle}</CardTitle>
             <CardDescription>{chartDescription}</CardDescription>
           </div>
-          <ChartControls isZoomed={isZoomed} onResetZoom={handleResetZoom} />
+          <ChartControls 
+            isZoomed={isZoomed} 
+            onResetZoom={handleResetZoom} 
+            onZoomIn={handleZoomIn}
+            onZoomOut={isZoomed ? handleZoomOut : undefined}
+          />
         </div>
       </CardHeader>
       <CardContent>
@@ -217,6 +582,7 @@ const TimeSeriesChart = ({
                 }
               }
             }}
+            ref={chartRef}
           >
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis 
@@ -225,11 +591,12 @@ const TimeSeriesChart = ({
               angle={-45}
               textAnchor="end"
               height={60}
-              domain={zoomDomain?.x || ['auto', 'auto']}
+              domain={xDomain}
               allowDataOverflow={isZoomed}
+              type="category"
             />
             <YAxis
-              domain={zoomDomain?.y || ['auto', 'auto']}
+              domain={yDomain}
               allowDataOverflow={isZoomed}
             />
             <Tooltip 
@@ -237,6 +604,12 @@ const TimeSeriesChart = ({
               labelFormatter={(label) => `Time: ${label}`}
             />
             <Legend />
+            
+            {/* Reference area for control limits */}
+            {renderReferenceAreas()}
+            
+            {/* Reference lines */}
+            {renderReferenceLines()}
             
             {/* Time windowing with brush */}
             <Brush 
@@ -246,68 +619,11 @@ const TimeSeriesChart = ({
               onChange={handleBrushChange}
             />
             
-            {/* Render a line for each series */}
-            {seriesKeys.map((seriesKey, index) => (
-              <Line 
-                key={seriesKey}
-                type="monotone" 
-                dataKey={seriesKey} 
-                name={seriesKey}
-                stroke={COLORS[index % COLORS.length]} 
-                strokeWidth={2}
-                dot={{ r: 3, fill: COLORS[index % COLORS.length], stroke: 'none' }}
-                activeDot={{ r: 6 }}
-                isAnimationActive={true}
-                animationDuration={1000}
-              />
-            ))}
+            {/* Render all lines */}
+            {renderLines()}
             
-            {/* Render prediction lines if available */}
-            {analysisResult?.type.includes('regression') && 
-              (analysisResult.targetSeries ? [analysisResult.targetSeries] : seriesKeys).map((seriesKey, index) => (
-                <Line 
-                  key={`${seriesKey}_predicted`}
-                  type="monotone" 
-                  dataKey={`${seriesKey}_predicted`}
-                  name={`${seriesKey} (Predicted)`}
-                  stroke={COLORS[index % COLORS.length]}
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={false}
-                  isAnimationActive={true}
-                  animationDuration={1000}
-                />
-              ))
-            }
-            
-            {/* Reference lines for anomaly detection - only show for target series */}
-            {showReferenceLines && (
-              <ReferenceLine 
-                y={analysisResult.results.mean} 
-                stroke="rgba(102, 102, 102, 0.7)" 
-                strokeDasharray="3 3" 
-                label={{ 
-                  value: `Mean: ${analysisResult.results.mean.toFixed(2)}`, 
-                  position: 'insideTopLeft',
-                  fill: '#666666',
-                  fontSize: 12
-                }} 
-              />
-            )}
-            
-            {showReferenceLines && analysisResult.results.threshold !== undefined && (
-              <ReferenceLine 
-                y={analysisResult.results.threshold} 
-                stroke="rgba(255, 99, 71, 0.7)" 
-                strokeDasharray="3 3" 
-                label={{ 
-                  value: `Threshold: ${analysisResult.results.threshold.toFixed(2)}`, 
-                  position: 'insideBottomLeft',
-                  fill: '#FF6347',
-                  fontSize: 12
-                }} 
-              />
-            )}
+            {/* Render anomaly points */}
+            {renderAnomalyPoints()}
           </LineChart>
         </ResponsiveContainer>
       </CardContent>

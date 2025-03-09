@@ -42,6 +42,9 @@ const AnalysisPage = () => {
   
   const handleAnalysisComplete = (result: AnalysisResult) => {
     setAnalysisResult(result);
+    
+    // Log the result to help with debugging
+    console.log("Analysis result:", result);
   };
   
   return (
