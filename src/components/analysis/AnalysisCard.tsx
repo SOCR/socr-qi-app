@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
     
     // Forecasting
     windowSize: 3,
-    forecastHorizon: 10,
+    forecastHorizon: 100, // Increased from 10 to 100 for longer forecasts
     
     // Anomaly Detection
     zScoreThreshold: 2,
@@ -252,7 +253,7 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
           </div>
           
           {/* Series Selector */}
-          {needsMultipleSeries() && data && (
+          {data && (
             <SeriesSelector
               data={data}
               selectedSeries={selectedSeries}
@@ -362,7 +363,7 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
                     onChange={(e) => handleParameterChange("threshold", parseFloat(e.target.value))}
                   />
                   <p className="text-xs text-gray-400">
-                    Values above this threshold will be classified as "High"
+                    Values above this threshold will be classified as "High" (e.g., "High Risk"), values below will be "Low" (e.g., "Low Risk")
                   </p>
                 </div>
               </div>
@@ -392,7 +393,7 @@ const AnalysisCard = ({ data, onAnalysisComplete }: AnalysisCardProps) => {
                     id="forecastHorizon"
                     type="number"
                     min="1"
-                    max="50"
+                    max="1000"
                     value={parameters.forecastHorizon}
                     onChange={(e) => handleParameterChange("forecastHorizon", parseInt(e.target.value))}
                   />

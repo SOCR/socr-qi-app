@@ -1,7 +1,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { Maximize } from "lucide-react";
+import { Maximize, ZoomIn, ZoomOut } from "lucide-react";
 
 interface ChartControlsProps {
   isZoomed: boolean;

@@ -255,7 +255,7 @@ const performClassificationAnalysis = (
   const classifications = sortedDataPoints.map(point => ({
     timestamp: point.timestamp,
     actualValue: point.value,
-    predictedClass: point.value >= threshold ? 'High' : 'Low',
+    predictedClass: point.value >= threshold ? 'High Risk' : 'Low Risk', // Changed from 'High'/'Low' to 'High Risk'/'Low Risk'
     threshold
   }));
   
@@ -272,7 +272,7 @@ const performClassificationAnalysis = (
     let falseNegatives = 0;
     
     sortedDataPoints.forEach((point, index) => {
-      const predicted = classifications[index].predictedClass === 'High';
+      const predicted = classifications[index].predictedClass === 'High Risk';
       const actual = point.category === 'High Risk'; // Assuming categories are "High Risk" and not "High Risk"
       
       if (predicted && actual) truePositives++;
@@ -296,7 +296,7 @@ const performClassificationAnalysis = (
       threshold,
       classifications,
       summary: `Classification analysis ${targetSeriesId ? `for series ${targetSeriesId}` : ''} using a threshold of ${threshold.toFixed(2)} separates 
-      data points into High/Low categories. ${accuracy > 0 ? 
+      data points into High Risk/Low Risk categories. ${accuracy > 0 ? 
       `The model achieved ${(accuracy * 100).toFixed(2)}% accuracy.` : 
       'No ground truth categories were available to evaluate accuracy.'}`
     },
@@ -310,7 +310,7 @@ const performClassificationAnalysis = (
   };
 };
 
-// Simple forecasting using moving average
+// Simple forecasting using moving average with extended horizon
 const performForecastingAnalysis = (
   data: TimeSeriesData,
   sortedDataPoints: DataPoint[],
@@ -319,7 +319,7 @@ const performForecastingAnalysis = (
 ): AnalysisResult => {
   // Use window size from parameters or default to 3
   const windowSize = parameters?.windowSize || 3;
-  const forecastHorizon = parameters?.forecastHorizon || 10;
+  const forecastHorizon = parameters?.forecastHorizon || 100; // Default to 100 points for forecast
   
   // Calculate moving averages
   const movingAverages: { timestamp: string; actual?: number; predicted: number }[] = [];
@@ -349,14 +349,34 @@ const performForecastingAnalysis = (
   }
   
   // Generate forecast for future points
+  if (sortedDataPoints.length < 2) {
+    throw new Error("Not enough data points for forecasting. Need at least 2 points.");
+  }
+  
   const lastDataPointTime = new Date(sortedDataPoints[sortedDataPoints.length - 1].timestamp).getTime();
-  const intervalMs = lastDataPointTime - new Date(sortedDataPoints[sortedDataPoints.length - 2].timestamp).getTime();
+  
+  // Calculate average time interval between points
+  let totalInterval = 0;
+  let intervalCount = 0;
+  
+  for (let i = 1; i < sortedDataPoints.length; i++) {
+    const currentTime = new Date(sortedDataPoints[i].timestamp).getTime();
+    const prevTime = new Date(sortedDataPoints[i-1].timestamp).getTime();
+    const interval = currentTime - prevTime;
+    
+    if (interval > 0) {
+      totalInterval += interval;
+      intervalCount++;
+    }
+  }
+  
+  const avgIntervalMs = intervalCount > 0 ? totalInterval / intervalCount : 86400000; // Default to 1 day
   
   // Get the last N actual values for forecasting
   const lastValues = sortedDataPoints.slice(-windowSize).map(point => point.value);
   
   for (let i = 1; i <= forecastHorizon; i++) {
-    const futureTime = lastDataPointTime + i * intervalMs;
+    const futureTime = lastDataPointTime + i * avgIntervalMs;
     
     // Calculate forecast using moving average
     const sum = lastValues.reduce((a, b) => a + b, 0);
@@ -391,6 +411,7 @@ const performForecastingAnalysis = (
       forecastHorizon,
       movingAverages,
       forecast: movingAverages.slice(-forecastHorizon),
+      forecastPeriod: forecastHorizon, // Add for display in results
       summary: `Forecasting analysis ${targetSeriesId ? `for series ${targetSeriesId}` : ''} using a ${windowSize}-point moving average 
       predicts values for the next ${forecastHorizon} time periods. The model 
       achieved a mean absolute error of ${mae.toFixed(2)}.`
@@ -404,7 +425,7 @@ const performForecastingAnalysis = (
   };
 };
 
-// Simple anomaly detection using Z-score
+// Anomaly detection using Z-score with upper/lower bounds
 const performAnomalyDetection = (
   data: TimeSeriesData,
   sortedDataPoints: DataPoint[],
@@ -420,6 +441,10 @@ const performAnomalyDetection = (
   const variance = values.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / values.length;
   const stdDev = Math.sqrt(variance);
   
+  // Calculate upper and lower control limits
+  const upperControlLimit = mean + (zScoreThreshold * stdDev);
+  const lowerControlLimit = mean - (zScoreThreshold * stdDev);
+  
   // Detect anomalies using Z-score
   const anomalies = sortedDataPoints.map(point => {
     const zScore = (point.value - mean) / stdDev;
@@ -429,7 +454,9 @@ const performAnomalyDetection = (
       timestamp: point.timestamp,
       value: point.value,
       zScore,
-      isAnomaly
+      isAnomaly,
+      isAboveUCL: point.value > upperControlLimit,
+      isBelowLCL: point.value < lowerControlLimit
     };
   });
   
@@ -448,11 +475,13 @@ const performAnomalyDetection = (
       anomalies,
       anomalyCount,
       anomalyPercentage,
-      threshold: mean + (zScoreThreshold * stdDev), // Upper threshold
+      upperControlLimit, // Add upper control limit for display
+      lowerControlLimit, // Add lower control limit for display
+      threshold: mean + (zScoreThreshold * stdDev), // Keep for backward compatibility
       summary: `Anomaly detection ${targetSeriesId ? `for series ${targetSeriesId}` : ''} using Z-score identified ${anomalyCount} anomalies 
       (${anomalyPercentage.toFixed(2)}% of data points) using a threshold of ${zScoreThreshold} 
       standard deviations from the mean. The mean value was ${mean.toFixed(2)} with a 
-      standard deviation of ${stdDev.toFixed(2)}.`
+      standard deviation of ${stdDev.toFixed(2)}. Control limits: [${lowerControlLimit.toFixed(2)}, ${upperControlLimit.toFixed(2)}].`
     },
     createdAt: new Date().toISOString()
   };
@@ -717,4 +746,3 @@ const performPoissonRegression = (
     createdAt: new Date().toISOString()
   };
 };
-
