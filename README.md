@@ -1,4 +1,4 @@
-# SOCR Quality Improvement (QI) Webapp Project
+# SOCR Quality Improvement (QI) Webapp1 Project
 
 ![](https://github.com/SOCR/socr-qi-app/blob/main/SOCR_QI_Webapp.png?raw=true)
 
@@ -6,7 +6,7 @@
 
 ## Technical Documentation
 
- * [Live QI App Demo](https://socr-qi-app.lovable.app/)
+ * [Live QI App1 Demo](https://socr-qi-app.lovable.app/)
  
  * To [update and edit the project](https://lovable.dev/projects/297617c1-f914-42fa-a586-4c10ceffc22b).
 
